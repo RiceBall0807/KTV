@@ -167,56 +167,42 @@
             }
         });
     }
-
-    async function addSong(songData, isInsert) {
-        // 1. 先加入清單
+    
+	async function addSong(songData, isInsert) {
+        // 1. 先加入清單 (此時 title 是預設的 "YT: ID")
         if (isInsert) {
             songList.splice(1, 0, songData); 
         } else {
             songList.push(songData);
         }
         
-        // 2. 立即更新一次 UI (顯示 "加載中...")
         updateUI();
-        
-        // 3. 如果是第一首歌且是房主，立即播放
-        if (isHost && songList.length === 1) {
-            playCurrent();
-        }
-
-        // 4. 廣播給所有賓客目前的狀態
+        if (isHost && songList.length === 1) playCurrent();
         broadcast();
 
-        // 5. 抓取真實標題 (僅限 YouTube)
-        if (songData.type === 'youtube') {
+        // 2. 只有房主負責抓標題，抓到再同步給所有人
+        if (isHost && songData.type === 'youtube') {
             try {
-                // 使用 noembed 抓取標題，並加上對應的 ID 確保改對人
-                const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`);
+                // 強制使用 https 並傳送完整的播放網址
+                const apiUrl = `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`;
+                const res = await fetch(apiUrl);
                 const json = await res.json();
                 
                 if (json && json.title) {
-                    // 在 songList 中找到該 ID 的歌曲並更新標題
-                    const target = songList.find(s => s.id === songData.id);
-                    if (target) {
-                        target.title = json.title;
-                        // 重要：更新後再次刷新 UI 與 廣播
+                    // 找到清單中對應的歌曲並更新標題
+                    const item = songList.find(s => s.id === songData.id);
+                    if (item) {
+                        item.title = json.title;
+                        console.log("成功抓取標題:", json.title);
                         updateUI(); 
-                        broadcast();
+                        broadcast(); // 抓到標題後再次廣播給賓客
                     }
                 }
             } catch (e) {
-                console.error("標題抓取失敗:", e);
-                // 失敗時把標題改回 ID，至少不是卡在載入中
-                const target = songList.find(s => s.id === songData.id);
-                if (target && target.title === "YouTube 加載中...") {
-                    target.title = "YouTube Video (" + songData.id + ")";
-                    updateUI();
-                    broadcast();
-                }
+                console.error("標題抓取失敗，保持原始 ID:", e);
             }
         }
     }
-	
 
     function playCurrent() {
         if (songList.length === 0) return;
