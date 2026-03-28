@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEMINI KTV</title>
+    <title>GEMINI KTV - 終極連線版</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; --bili: #fb7299; --danger: #ff4444; }
         body { background: var(--bg); color: #fff; font-family: sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         .app-container { display: flex; gap: 20px; max-width: 1400px; width: 100%; height: 95vh; }
-        .main-area { flex: 1.5; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; }
+        .main-area { flex: 1.5; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; gap: 15px; }
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
         .video-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
@@ -33,7 +33,7 @@
             .app-container { flex-direction: column; height: auto; }
             #player-container { display: none !important; }
             .main-area { flex: none; order: 1; }
-            .side-area { order: 2; min-width: auto; height: 70vh; }
+            .side-area { order: 2; min-width: auto; height: 75vh; }
         }
     </style>
 </head>
@@ -57,7 +57,7 @@
     </div>
 
     <div class="side-area">
-        <h3 style="margin:0 0 15px 0; color: var(--primary);">點歌管理</h3>
+        <h3 style="margin:0 0 15px 0; color: var(--primary);">💎 GEMINI KTV 控制台</h3>
         <div class="side-controls">
             <input type="text" id="videoUrl" placeholder="貼上網址 (YT / Bili)...">
             <div class="btn-group">
@@ -72,9 +72,22 @@
 
 <script>
     const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const peer = new Peer(shortId); 
+    
+    // 【關鍵改進 1：STUN 伺服器配置，解決跨裝置連線穿透問題】
+    const peer = new Peer(shortId, {
+        config: {
+            'iceServers': [
+                { url: 'stun:stun.l.google.com:19302' },
+                { url: 'stun:stun1.l.google.com:19302' },
+                { url: 'stun:stun2.l.google.com:19302' },
+                { url: 'stun:stun3.l.google.com:19302' },
+                { url: 'stun:stun4.l.google.com:19302' }
+            ]
+        }
+    });
+
     let conn, ytPlayer;
-    let songList = []; // 初始為空，等待同步
+    let songList = [{ id: 'QDia3e12czc', type: 'youtube' }]; 
 
     function showToast(msg) {
         const t = document.getElementById('toast');
@@ -82,62 +95,56 @@
         setTimeout(() => { t.style.display = 'none'; }, 3000);
     }
 
-    peer.on('open', (id) => document.getElementById('my-id').innerText = id);
+    peer.on('open', (id) => {
+        document.getElementById('my-id').innerText = id;
+        console.log("ID 準備就緒: " + id);
+    });
     
-    // 【房主端邏輯】
+    // 房主監聽
     peer.on('connection', (c) => { 
         conn = c; 
-        showToast("📢 隊友已連線！");
-        
-        // 當連線開啟，主動把現有的清單發送給對方
-        conn.on('open', () => {
-            console.log("連線已開啟，發送初始化清單");
-            broadcastList(); 
-        });
-
-        listenData(); 
+        showToast("📢 隊友已加入！");
+        setupConn();
     });
 
-    // 【訪客/手機端邏輯】
+    // 訪客連線
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
-        conn = peer.connect(id);
-        
-        conn.on('open', () => {
-            showToast("✅ 已成功連線，正在取得清單...");
-            // 主動要求房主傳送目前的清單 (以防房主沒偵測到 open)
-            conn.send({ type: 'requestList' });
-        });
-
-        listenData();
+        conn = peer.connect(id, { reliable: true }); // 強制可靠連線
+        showToast("⏳ 正在嘗試連線...");
+        setupConn();
     }
 
-    // 【資料監聽核心】
-    function listenData() {
+    // 【關鍵改進 2：統一連線後的通訊握手邏輯】
+    function setupConn() {
         if (!conn) return;
+
+        conn.on('open', () => {
+            showToast("✅ 同步連線成功！");
+            // 連線一開，訪客跟房主互相交換一次資料
+            broadcastList();
+        });
+
         conn.on('data', (data) => {
-            console.log("收到資料:", data);
-            
-            // 房主收到請求清單的指令
-            if (data.type === 'requestList') {
-                broadcastList();
-            }
-            
-            // 雙方收到更新清單的指令
+            console.log("接收到數據:", data);
             if (data.type === 'updateList') {
                 const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
                 songList = data.list;
                 updateUI();
-                
-                // 只有電腦版（大螢幕）需要執行播放邏輯
                 if (isNewFirst && songList.length > 0 && window.innerWidth > 768) {
                     playCurrent();
                 }
             }
         });
-        
-        conn.on('close', () => showToast("❌ 連線已中斷"));
+
+        conn.on('close', () => {
+            showToast("❌ 連線中斷");
+        });
+
+        conn.on('error', (err) => {
+            console.error("連線錯誤:", err);
+        });
     }
 
     function parseUrl(url) {
@@ -159,10 +166,8 @@
         if (action === 'add') songList.push(songData);
         else songList.splice(1, 0, songData);
         
-        broadcastList(); // 同步給對方
-        updateUI();      // 更新自己的 UI
-        
-        // 如果是電腦版且清單原本是空的，點第一首時直接播放
+        broadcastList(); 
+        updateUI();
         if (songList.length === 1 && window.innerWidth > 768) playCurrent();
         document.getElementById('videoUrl').value = '';
     }
@@ -227,7 +232,7 @@
     function onYouTubeIframeAPIReady() {
         if (window.innerWidth <= 768) return;
         ytPlayer = new YT.Player('yt-player', {
-            videoId: '',
+            videoId: songList[0]?.id || '',
             playerVars: { 'autoplay': 1, 'rel': 0 },
             events: { 'onStateChange': (e) => { if (e.data === 0) skipSong(); } }
         });
