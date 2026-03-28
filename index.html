@@ -2,80 +2,116 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>P2P KTV - 預設歌曲版</title>
+    <title>P2P KTV - 同步修正旗艦版</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { background: #121212; color: #00ff00; font-family: sans-serif; text-align: center; padding: 20px; }
-        .container { max-width: 800px; margin: auto; border: 2px solid #333; padding: 20px; border-radius: 15px; }
-        #player-wrapper { background: #000; margin-bottom: 20px; border: 2px solid #00ff00; width: 100%; aspect-ratio: 16 / 9; }
-        #player { width: 100%; height: 100%; }
-        .controls { margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; }
-        input { padding: 10px; background: #222; border: 1px solid #00ff00; color: #fff; border-radius: 5px; width: 300px; }
-        button { padding: 10px 20px; background: #00ff00; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        #playlist-box { text-align: left; background: #222; padding: 15px; border-radius: 10px; border-left: 5px solid #00ff00; }
-        .song-item { padding: 8px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
-        .playing { color: #ff00ff; font-weight: bold; }
+        :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
+        .app-container { display: flex; gap: 20px; max-width: 1400px; width: 100%; height: 95vh; }
+        .main-area { flex: 1.5; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; }
+        .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; gap: 15px; }
+        #player-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; }
+        .side-area { flex: 1; background: #111; padding: 20px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 400px; }
+        .side-controls { background: #222; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #444; }
+        .side-controls input { width: 100%; padding: 10px; background: #333; border: 1px solid #555; color: #fff; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; outline: none; }
+        .btn-group { display: flex; gap: 5px; width: 100%; }
+        .btn-group button { flex: 1; padding: 10px 5px; font-size: 0.9em; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
+        .btn-add { background: var(--primary); color: #000; }
+        .btn-insert { background: #ffcc00; }
+        .btn-skip { background: #ff4444; color: #fff; }
+        .btn-join { background: var(--info); color: #000; padding: 8px 15px; }
+        #list-content { flex-grow: 1; overflow-y: auto; }
+        .song-item { padding: 10px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
+        #my-id { color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; }
+        #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>🎤 專業 P2P 點歌房</h1>
-    <div style="margin-bottom: 10px; font-size: 0.8em; color: #888;">
-        連線 ID: <span id="my-id" style="color:white">取得中...</span>
-    </div>
-    
-    <div class="controls">
-        <input type="text" id="peer-id" placeholder="貼上房主 ID 加入">
-        <button onclick="connectToHost()">加入房間</button>
+<div id="toast"></div>
+
+<div class="app-container">
+    <div class="main-area">
+        <div class="header-controls">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="color:#888; font-size:0.8em;">我的房號:</span>
+                <span id="my-id" onclick="copyId()">連線中...</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="peer-id" style="padding:8px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:120px;" placeholder="輸入房號">
+                <button class="btn-join" onclick="connectToHost()">進入房間</button>
+            </div>
+        </div>
+        <div id="player-wrapper"><div id="player"></div></div>
     </div>
 
-    <div id="player-wrapper">
-        <div id="player"></div>
-    </div>
-
-    <div class="controls">
-        <input type="text" id="videoUrl" placeholder="貼上 YouTube 網址點歌...">
-        <button onclick="addSong()">確認點歌</button>
-    </div>
-
-    <div id="playlist-box">
-        <strong>📜 目前播放清單：</strong>
-        <div id="list-content">載入中...</div>
+    <div class="side-area">
+        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 歌單管理</h3>
+        <div class="side-controls">
+            <input type="text" id="videoUrl" placeholder="貼上 YouTube 網址...">
+            <div class="btn-group">
+                <button class="btn-add" onclick="handleSongAction('add')">點歌</button>
+                <button class="btn-insert" onclick="handleSongAction('insert')">🚀 插播</button>
+                <button class="btn-skip" onclick="skipSong()">⏭️ 切歌</button>
+            </div>
+        </div>
+        <div id="list-content"></div>
     </div>
 </div>
 
 <script>
-    let peer = new Peer();
-    let conn;
-    let player;
-    // --- 修改處：預設歌曲清單 ---
-    let songList = ['QDia3e12czc']; 
+    const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const peer = new Peer(shortId); 
+    let conn, player;
+    let songList = ['QDia3e12czc']; // 預設歌曲
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.innerText = msg; t.style.display = 'block';
+        setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
 
     peer.on('open', (id) => document.getElementById('my-id').innerText = id);
+    
+    // 【關鍵修正：房主端監聽】
     peer.on('connection', (c) => { 
         conn = c; 
+        showToast("📢 有新隊友加入房間了！");
+        
+        // 當連線建立成功，房主立刻把最新的歌單發送給新人
+        conn.on('open', () => {
+            broadcastList(); 
+        });
+
         listenData(); 
-        // 房主主動把目前的清單同步給新進來的人
-        conn.send({ type: 'syncList', list: songList });
     });
 
+    peer.on('error', (err) => { if(err.type === 'unavailable-id') window.location.reload(); });
+
     function connectToHost() {
-        const id = document.getElementById('peer-id').value;
+        const id = document.getElementById('peer-id').value.trim().toUpperCase();
+        if(!id) return;
         conn = peer.connect(id);
+        
+        conn.on('open', () => {
+            showToast("✅ 成功進入房間！清單同步中...");
+            document.querySelector('.btn-join').innerText = "已連線";
+            document.querySelector('.btn-join').style.background = "#444";
+        });
+        
         listenData();
     }
 
     function listenData() {
+        if (!conn) return;
         conn.on('data', (data) => {
-            if (data.type === 'newSong') {
-                songList.push(data.videoId);
+            if (data.type === 'updateList') {
+                const oldFirst = songList[0];
+                songList = data.list; // 接收來自對方的最新清單
                 updateUI();
-                checkAndPlay();
-            } else if (data.type === 'syncList') {
-                songList = data.list;
-                updateUI();
-                checkAndPlay();
+                // 如果清單第一首變了，則切換播放內容
+                if (songList.length > 0 && oldFirst !== songList[0]) playCurrent();
             }
         });
     }
@@ -86,91 +122,69 @@
         return match ? match[1] : (url.length === 11 ? url : null);
     }
 
-    function addSong() {
-        const url = document.getElementById('videoUrl').value;
-        const vid = extractVideoId(url);
+    function handleSongAction(action) {
+        const vid = extractVideoId(document.getElementById('videoUrl').value.trim());
+        if (!vid) return alert("網址無效");
+
+        if (action === 'add') songList.push(vid); // 點歌：加在末端
+        else songList.splice(1, 0, vid); // 插播：加在下一首
         
-        if (vid) {
-            songList.push(vid);
-            updateUI();
-            checkAndPlay();
-            if (conn && conn.open) conn.send({ type: 'newSong', videoId: vid });
-            document.getElementById('videoUrl').value = '';
-        } else {
-            alert("網址格式無法辨識！");
-        }
+        broadcastList(); // 點歌後立刻同步給所有人
+        updateUI();
+        
+        if (player.getPlayerState() !== 1) playCurrent();
+        document.getElementById('videoUrl').value = '';
+    }
+
+    function skipSong() {
+        if (songList.length === 0) return;
+        songList.shift(); // 移除目前播放歌曲
+        broadcastList(); 
+        updateUI();
+        if (songList.length > 0) playCurrent();
+        else player.stopVideo();
+    }
+
+    function broadcastList() { 
+        if (conn && conn.open) {
+            conn.send({ type: 'updateList', list: songList }); 
+        } 
     }
 
     function updateUI() {
         const box = document.getElementById('list-content');
-        if (songList.length === 0) {
-            box.innerText = "清單目前是空的";
-            return;
-        }
         box.innerHTML = songList.map((id, index) => `
             <div class="song-item">
-                <span class="${index === 0 ? 'playing' : ''}">
-                    ${index === 0 ? '▶️ 正在播放' : '⏳ 待播中'}：${id}
-                </span>
-                <button style="padding:2px 5px; font-size:10px; background:#444; color:white;" onclick="removeSong(${index})">刪除</button>
+                <span style="color:${index===0?'#ff00ff':'#fff'}">${index===0?'▶️':'⏳'} ${id}</span>
+                <button style="padding:2px 5px; background:#333; color:#fff; font-size:10px; border:none; cursor:pointer;" onclick="removeSong(${index})">❌</button>
             </div>
         `).join('');
     }
 
-    function checkAndPlay() {
-        if (player && player.getPlayerState) {
-            const state = player.getPlayerState();
-            // 如果影片結束、未啟動、或剛載入，就播第一首
-            if (state !== 1 && state !== 3 && songList.length > 0) {
-                player.loadVideoById(songList[0]);
-            }
-        }
+    function playCurrent() { if (player && songList.length > 0) player.loadVideoById(songList[0]); }
+    
+    function removeSong(index) { 
+        if (index === 0) skipSong(); 
+        else { 
+            songList.splice(index, 1); 
+            broadcastList(); 
+            updateUI(); 
+        } 
     }
 
-    function removeSong(index) {
-        songList.splice(index, 1);
-        updateUI();
-        if (index === 0 && songList.length > 0) {
-            player.loadVideoById(songList[0]);
-        } else if (songList.length === 0) {
-            player.stopVideo();
-        }
-    }
+    function copyId() { navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); }
 
-    // --- 修改處：設定預設播放影片 ---
     function onYouTubeIframeAPIReady() {
         player = new YT.Player('player', {
-            videoId: 'QDia3e12czc', // 預設載入歌曲
-            playerVars: { 
-                'autoplay': 0, // 設為 0 以防瀏覽器阻擋，讓使用者手動點擊第一次播放
-                'rel': 0,
-                'origin': window.location.origin 
-            },
-            events: {
-                'onReady': () => {
-                    updateUI();
-                    console.log("KTV 系統準備就緒");
-                },
-                'onStateChange': (e) => {
-                    if (e.data === 0) { // 播完了
-                        songList.shift();
-                        updateUI();
-                        if (songList.length > 0) player.loadVideoById(songList[0]);
-                    }
-                },
-                'onError': (e) => {
-                    if (e.data === 150 || e.data === 153) {
-                        alert("此影片受版權保護無法嵌入，將自動跳過。");
-                        songList.shift();
-                        updateUI();
-                        if (songList.length > 0) player.loadVideoById(songList[0]);
-                    }
-                }
+            videoId: songList[0],
+            playerVars: { 'autoplay': 0, 'rel': 0, 'origin': window.location.origin },
+            events: { 
+                'onReady': () => updateUI(), 
+                'onStateChange': (e) => { if (e.data === 0) skipSong(); } // 播完自動跳下一首
             }
         });
     }
 </script>
 <script src="https://www.youtube.com/iframe_api"></script>
-
 </body>
 </html>
