@@ -169,22 +169,54 @@
     }
 
     async function addSong(songData, isInsert) {
-        if (isInsert) songList.splice(1, 0, songData); else songList.push(songData);
+        // 1. 先加入清單
+        if (isInsert) {
+            songList.splice(1, 0, songData); 
+        } else {
+            songList.push(songData);
+        }
+        
+        // 2. 立即更新一次 UI (顯示 "加載中...")
         updateUI();
-        if (isHost && songList.length === 1) playCurrent();
+        
+        // 3. 如果是第一首歌且是房主，立即播放
+        if (isHost && songList.length === 1) {
+            playCurrent();
+        }
+
+        // 4. 廣播給所有賓客目前的狀態
         broadcast();
 
+        // 5. 抓取真實標題 (僅限 YouTube)
         if (songData.type === 'youtube') {
             try {
+                // 使用 noembed 抓取標題，並加上對應的 ID 確保改對人
                 const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`);
                 const json = await res.json();
-                if(json.title) {
-                    songList.find(s => s.id === songData.id).title = json.title;
-                    updateUI(); broadcast();
+                
+                if (json && json.title) {
+                    // 在 songList 中找到該 ID 的歌曲並更新標題
+                    const target = songList.find(s => s.id === songData.id);
+                    if (target) {
+                        target.title = json.title;
+                        // 重要：更新後再次刷新 UI 與 廣播
+                        updateUI(); 
+                        broadcast();
+                    }
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error("標題抓取失敗:", e);
+                // 失敗時把標題改回 ID，至少不是卡在載入中
+                const target = songList.find(s => s.id === songData.id);
+                if (target && target.title === "YouTube 加載中...") {
+                    target.title = "YouTube Video (" + songData.id + ")";
+                    updateUI();
+                    broadcast();
+                }
+            }
         }
     }
+	
 
     function playCurrent() {
         if (songList.length === 0) return;
@@ -275,7 +307,7 @@
     function parseUrl(url) {
         const yt = url.match(/(?:youtube\.com\/.*[?&]v=|youtu\.be\/)([^"&?\/\s]{11})/);
         const bili = url.match(/(BV[a-zA-Z0-9]{10})/);
-        if (yt) return { id: yt[1], type: 'youtube', title: "YouTube 加載中..." };
+        if (yt) return { id: yt[1], type: 'youtube', title: "YT: " + yt[1] }; // 改用 ID 當預設
         if (bili) return { id: bili[1], type: 'bilibili', title: 'Bilibili: ' + bili[1] };
         return null;
     }
