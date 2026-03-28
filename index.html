@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEMINI KTV - 連線修正版</title>
+    <title>GEMINI KTV</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; --danger: #ff4444; }
@@ -61,7 +61,7 @@
     </div>
 
     <div class="side-area">
-        <h3 style="margin:0 0 15px 0; color: var(--primary);">點歌管理</h3>
+        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 點歌管理 <span id="role-tag" style="font-size:0.5em; color:#888;">(房主)</span></h3>
         <div class="side-controls">
             <input type="text" id="videoUrl" placeholder="貼上網址 (YT / Bili)...">
             <div class="btn-group">
@@ -76,18 +76,12 @@
 
 <script>
     const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    
-    // 【修正：加入 STUN 伺服器配置】
     const peer = new Peer(shortId, {
-        config: { 
-            'iceServers': [
-                { url: 'stun:stun.l.google.com:19302' },
-                { url: 'stun:stun1.l.google.com:19302' }
-            ] 
-        }
+        config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }, { url: 'stun:stun1.l.google.com:19302' }] }
     });
 
     let conn, ytPlayer;
+    let isHost = true; // 預設為房主
     let songList = [{ id: 'QDia3e12czc', type: 'youtube' }]; 
 
     function showToast(msg) {
@@ -97,15 +91,26 @@
     }
 
     peer.on('open', (id) => document.getElementById('my-id').innerText = id);
+
+    // 【修正：房主邏輯】
     peer.on('connection', (c) => { 
+        isHost = true;
         conn = c; 
+        document.getElementById('role-tag').innerText = "(房主模式)";
         showToast("📢 隊友已加入！");
-        setupConn(); 
+        
+        setupConn();
+        
+        // 重要：當有人連進來，房主主動把「目前的歌單」發給對方，防止被對方的空歌單覆蓋
+        setTimeout(() => broadcastList(), 1000); 
     });
 
+    // 【修正：賓客邏輯】
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
+        isHost = false; // 切換為賓客模式
+        document.getElementById('role-tag').innerText = "(賓客模式)";
         conn = peer.connect(id);
         setupConn();
     }
@@ -113,18 +118,25 @@
     function setupConn() {
         conn.on('open', () => {
             showToast("✅ 已成功連線");
-            broadcastList();
+            // 賓客連線成功時「不要」主動發送 broadcastList()，以免覆蓋房主
         });
+
         conn.on('data', (data) => {
             if (data.type === 'updateList') {
+                // 檢查歌單第一首是否改變，決定是否切換播放
                 const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
                 songList = data.list;
                 updateUI();
-                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) playCurrent();
+                
+                // 只有電腦端（通常是房主）才需要真正執行播放動作
+                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) {
+                    playCurrent();
+                }
             }
         });
     }
 
+    // --- 播放與解析邏輯 ---
     function parseUrl(url) {
         const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
         const biliRegex = /(BV[a-zA-Z0-9]{10})/;
@@ -140,9 +152,12 @@
     function handleSongAction(action) {
         const songData = parseUrl(document.getElementById('videoUrl').value.trim());
         if (!songData) return alert("無法辨識此網址");
+        
         if (action === 'add') songList.push(songData);
         else songList.splice(1, 0, songData);
-        broadcastList(); updateUI();
+        
+        broadcastList(); // 點歌後同步給所有人
+        updateUI();
         if (songList.length === 1 && window.innerWidth > 768) playCurrent();
         document.getElementById('videoUrl').value = '';
     }
@@ -150,7 +165,8 @@
     function skipSong() {
         if (songList.length === 0) return;
         songList.shift();
-        broadcastList(); updateUI();
+        broadcastList(); 
+        updateUI();
         if (songList.length > 0) playCurrent(); else stopAllPlayers();
     }
 
@@ -177,7 +193,12 @@
         if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
     }
 
-    function broadcastList() { if (conn && conn.open) conn.send({ type: 'updateList', list: songList }); }
+    function broadcastList() { 
+        if (conn && conn.open) {
+            conn.send({ type: 'updateList', list: songList }); 
+        }
+    }
+
     function updateUI() {
         const box = document.getElementById('list-content');
         box.innerHTML = songList.map((song, index) => {
@@ -188,6 +209,7 @@
             </div>`;
         }).join('');
     }
+
     function removeSong(index) { if (index === 0) skipSong(); else { songList.splice(index, 1); broadcastList(); updateUI(); } }
     function copyId() { navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); }
 
