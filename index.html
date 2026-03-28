@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEMINI KTV - 房號放大版</title>
+    <title>GEMINI KTV</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; --danger: #ff4444; }
@@ -26,9 +26,19 @@
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 5px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
         
-        /* 【核心修正：電腦版房號樣式】 */
-        #my-id { color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; transition: font-size 0.3s ease; }
-        .host-id-large { font-size: 3em; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0, 255, 0, 0.5); } /* 電腦版放大 */
+        /* 【核心修正：全裝置房號樣式】 */
+        #my-id { 
+            color: var(--primary); 
+            font-weight: bold; 
+            cursor: pointer; 
+            text-decoration: underline; 
+            font-family: monospace; 
+            font-size: 2.8em; /* 全裝置放大 */
+            letter-spacing: 2px;
+            text-shadow: 0 0 12px rgba(0, 255, 0, 0.6);
+            display: inline-block;
+            margin-left: 10px;
+        }
         
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; }
         #volume-hint { color: #ffcc00; font-size: 0.8em; margin-top: 5px; text-align: center; display: none; }
@@ -39,11 +49,10 @@
             #player-container, #volume-hint { display: none !important; }
             .main-area { flex: none; padding: 10px; order: 1; }
             
-            /* 【核心修正：手機版還原房號大小】 */
-            .header-controls { flex-direction: column; gap: 5px; align-items: flex-start; padding: 8px; }
-            .header-controls div:first-child { width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: 5px; }
-            #my-id { font-size: 1.2em; letter-spacing: normal; text-shadow: none; } /* 手機版正常 */
-            .host-id-large { font-size: 1.2em !important; } /* 強制還原 */
+            /* 【核心修正：手機版排版優化】 */
+            .header-controls { flex-direction: column; gap: 15px; align-items: center; padding: 15px; text-align: center; }
+            .header-controls div:first-child { width: 100%; }
+            #my-id { font-size: 2.5em; margin: 5px 0; display: block; } /* 手機版稍微收斂一點點但依然巨大 */
             
             .side-area { order: 2; min-width: auto; height: 75vh; }
         }
@@ -57,11 +66,11 @@
     <div class="main-area">
         <div class="header-controls">
             <div>
-                <span style="color:#888; font-size:0.8em;">房號:</span> 
-                <span id="my-id" class="host-id-large" onclick="copyId()">連線中...</span>
+                <span style="color:#888; font-size:0.9em;">房號:</span> 
+                <span id="my-id" onclick="copyId()">連線中...</span>
             </div>
             <div style="display:flex; gap:8px;">
-                <input type="text" id="peer-id" style="padding:8px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:120px;" placeholder="輸入房號">
+                <input type="text" id="peer-id" style="padding:10px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:140px;" placeholder="輸入房號">
                 <button class="btn-join" onclick="connectToHost()">連線</button>
             </div>
         </div>
@@ -95,6 +104,7 @@
     let connections = []; 
     let ytPlayer;
     let songList = [{ id: 'QDia3e12czc', type: 'youtube' }]; 
+    let isHost = true; 
 
     function showToast(msg) {
         const t = document.getElementById('toast');
@@ -108,43 +118,52 @@
     });
 
     peer.on('connection', (conn) => {
+        isHost = true;
         setupConnection(conn);
         showToast("📢 隊友已加入！");
-        conn.on('open', () => broadcastList());
+        conn.on('open', () => {
+            conn.send({ type: 'updateList', list: songList });
+        });
     });
 
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
+        isHost = false; 
         document.getElementById('role-tag').innerText = "(賓客模式)";
         const conn = peer.connect(id);
         setupConnection(conn);
     }
 
     function setupConnection(conn) {
-        connections.push(conn);
+        if (isHost) {
+            connections.push(conn);
+        } else {
+            connections = [conn];
+        }
+
         conn.on('data', (data) => {
             if (data.type === 'updateList') {
                 const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
                 songList = data.list;
                 updateUI();
-                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) playCurrent();
-                broadcastList(); 
+                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) {
+                    playCurrent();
+                }
+                if (isHost) broadcastList(); 
             }
         });
+
         conn.on('close', () => {
             connections = connections.filter(c => c.peer !== conn.peer);
-            showToast("⚠️ 一名隊友已離線");
-        });
-        conn.on('error', () => {
-            connections = connections.filter(c => c.peer !== conn.peer);
+            if(isHost) showToast("⚠️ 一名隊友已離線");
         });
     }
 
     function broadcastList() {
-        connections.forEach(conn => {
-            if (conn && conn.open) {
-                conn.send({ type: 'updateList', list: songList });
+        connections.forEach(c => {
+            if (c && c.open) {
+                c.send({ type: 'updateList', list: songList });
             }
         });
     }
