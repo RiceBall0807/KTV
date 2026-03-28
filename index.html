@@ -10,7 +10,7 @@
         body { background: var(--bg); color: #fff; font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         .app-container { display: flex; gap: 20px; max-width: 1400px; width: 100%; height: 95vh; }
         .main-area { flex: 1.5; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; gap: 15px; }
+        .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 15px; border-radius: 12px; margin-bottom: 15px; gap: 15px; }
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
         .video-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
         .active-player { display: block; }
@@ -26,18 +26,9 @@
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 5px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
         
-        /* 【核心修正：全裝置房號樣式】 */
         #my-id { 
-            color: var(--primary); 
-            font-weight: bold; 
-            cursor: pointer; 
-            text-decoration: underline; 
-            font-family: monospace; 
-            font-size: 2.8em; /* 全裝置放大 */
-            letter-spacing: 2px;
-            text-shadow: 0 0 12px rgba(0, 255, 0, 0.6);
-            display: inline-block;
-            margin-left: 10px;
+            color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; 
+            font-size: 2.8em; letter-spacing: 2px; text-shadow: 0 0 12px rgba(0, 255, 0, 0.6); margin-left: 10px;
         }
         
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; }
@@ -48,12 +39,8 @@
             .app-container { flex-direction: column; height: auto; gap: 10px; }
             #player-container, #volume-hint { display: none !important; }
             .main-area { flex: none; padding: 10px; order: 1; }
-            
-            /* 【核心修正：手機版排版優化】 */
             .header-controls { flex-direction: column; gap: 15px; align-items: center; padding: 15px; text-align: center; }
-            .header-controls div:first-child { width: 100%; }
-            #my-id { font-size: 2.5em; margin: 5px 0; display: block; } /* 手機版稍微收斂一點點但依然巨大 */
-            
+            #my-id { font-size: 2.5em; margin: 5px 0; display: block; }
             .side-area { order: 2; min-width: auto; height: 75vh; }
         }
     </style>
@@ -65,10 +52,7 @@
 <div class="app-container">
     <div class="main-area">
         <div class="header-controls">
-            <div>
-                <span style="color:#888; font-size:0.9em;">房號:</span> 
-                <span id="my-id" onclick="copyId()">連線中...</span>
-            </div>
+            <div><span style="color:#888; font-size:0.9em;">房號:</span> <span id="my-id" onclick="copyId()">...</span></div>
             <div style="display:flex; gap:8px;">
                 <input type="text" id="peer-id" style="padding:10px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:140px;" placeholder="輸入房號">
                 <button class="btn-join" onclick="connectToHost()">連線</button>
@@ -117,57 +101,121 @@
         document.getElementById('role-tag').innerText = "(房主模式)";
     });
 
+    // --- 房主邏輯 ---
     peer.on('connection', (conn) => {
         isHost = true;
-        setupConnection(conn);
+        connections.push(conn);
         showToast("📢 隊友已加入！");
-        conn.on('open', () => {
-            conn.send({ type: 'updateList', list: songList });
+        
+        conn.on('open', () => broadcastList()); // 連線成功即推播目前歌單給賓客
+
+        conn.on('data', (data) => {
+            // 【核心修正：處理賓客傳來的指令】
+            if (data.type === 'command') {
+                if (data.action === 'add') {
+                    songList.push(data.song);
+                } else if (data.action === 'insert') {
+                    // 插播：放在第二位（索引 1），不影響目前正在播的歌
+                    songList.splice(1, 0, data.song);
+                } else if (data.action === 'skip') {
+                    skipSong();
+                    return; // skipSong 內部會處理廣播
+                } else if (data.action === 'remove') {
+                    removeSong(data.index);
+                    return;
+                }
+                
+                // 處理完畢後，由房主統一廣播
+                updateUI();
+                if (songList.length === 1 && window.innerWidth > 768) playCurrent();
+                broadcastList();
+            }
+        });
+
+        conn.on('close', () => {
+            connections = connections.filter(c => c.peer !== conn.peer);
         });
     });
 
+    // --- 賓客邏輯 ---
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
         isHost = false; 
         document.getElementById('role-tag').innerText = "(賓客模式)";
         const conn = peer.connect(id);
-        setupConnection(conn);
-    }
-
-    function setupConnection(conn) {
-        if (isHost) {
-            connections.push(conn);
-        } else {
-            connections = [conn];
-        }
+        
+        conn.on('open', () => {
+            showToast("✅ 已成功連線至房主");
+            connections = [conn]; 
+        });
 
         conn.on('data', (data) => {
+            // 賓客只負責接收房主傳來的「完整歌單」來更新 UI
             if (data.type === 'updateList') {
-                const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
                 songList = data.list;
                 updateUI();
-                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) {
-                    playCurrent();
-                }
-                if (isHost) broadcastList(); 
             }
-        });
-
-        conn.on('close', () => {
-            connections = connections.filter(c => c.peer !== conn.peer);
-            if(isHost) showToast("⚠️ 一名隊友已離線");
         });
     }
 
+    // --- 同步核心 ---
     function broadcastList() {
+        if (!isHost) return;
         connections.forEach(c => {
-            if (c && c.open) {
-                c.send({ type: 'updateList', list: songList });
-            }
+            if (c.open) c.send({ type: 'updateList', list: songList });
         });
     }
 
+    // --- 按鈕操作邏輯 ---
+    function handleSongAction(action) {
+        const urlInput = document.getElementById('videoUrl');
+        const songData = parseUrl(urlInput.value.trim());
+        if (!songData) return alert("無法辨識此網址");
+
+        if (isHost) {
+            // 房主直接操作
+            if (action === 'add') songList.push(songData);
+            else songList.splice(1, 0, songData);
+            updateUI();
+            if (songList.length === 1 && window.innerWidth > 768) playCurrent();
+            broadcastList();
+        } else {
+            // 賓客發送「指令」給房主
+            if (connections[0]?.open) {
+                connections[0].send({ type: 'command', action: action, song: songData });
+                showToast("🚀 已送出點歌請求");
+            }
+        }
+        urlInput.value = '';
+    }
+
+    function skipSong() {
+        if (songList.length === 0) return;
+        if (isHost) {
+            songList.shift();
+            updateUI();
+            if (songList.length > 0) playCurrent(); else stopAllPlayers();
+            broadcastList();
+        } else {
+            if (connections[0]?.open) connections[0].send({ type: 'command', action: 'skip' });
+        }
+    }
+
+    function removeSong(index) {
+        if (isHost) {
+            if (index === 0) skipSong();
+            else {
+                songList.splice(index, 1);
+                updateUI();
+                broadcastList();
+            }
+        } else {
+            if (connections[0]?.open) connections[0].send({ type: 'command', action: 'remove', index: index });
+        }
+    }
+
+    // --- 播放器與 UI (保持不變) ---
     function parseUrl(url) {
         const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
         const biliRegex = /(BV[a-zA-Z0-9]{10})/;
@@ -178,34 +226,6 @@
         if (url.length === 11 && !url.startsWith('BV')) return { id: url, type: 'youtube' };
         if (url.startsWith('BV')) return { id: url, type: 'bilibili' };
         return null;
-    }
-
-    function handleSongAction(action) {
-        const songData = parseUrl(document.getElementById('videoUrl').value.trim());
-        if (!songData) return alert("無法辨識此網址");
-        if (action === 'add') songList.push(songData);
-        else songList.splice(1, 0, songData);
-        updateUI();
-        if (songList.length === 1 && window.innerWidth > 768) playCurrent();
-        broadcastList(); 
-        document.getElementById('videoUrl').value = '';
-    }
-
-    function skipSong() {
-        if (songList.length === 0) return;
-        songList.shift();
-        updateUI();
-        if (songList.length > 0) playCurrent(); else stopAllPlayers();
-        broadcastList(); 
-    }
-
-    function removeSong(index) {
-        if (index === 0) skipSong();
-        else {
-            songList.splice(index, 1);
-            updateUI();
-            broadcastList(); 
-        }
     }
 
     function playCurrent() {
