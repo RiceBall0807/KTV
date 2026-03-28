@@ -92,8 +92,18 @@
     let songList = []; 
     let isHost = true;
     let connections = [];
-    let peer = null;
-
+    const peer = new Peer(Math.random().toString(36).substring(2, 8).toUpperCase(), {
+        config: {
+            'iceServers': [
+                { url: 'stun:stun.l.google.com:19302' },
+                { url: 'stun:stun1.l.google.com:19302' },
+                { url: 'stun:stun2.l.google.com:19302' },
+                { url: 'stun:stun3.l.google.com:19302' },
+                { url: 'stun:stun4.l.google.com:19302' }
+            ],
+            'sdpSemantics': 'unified-plan'
+        }
+    });
     // YouTube API 加載監聽
     function onYouTubeIframeAPIReady() {
         console.log("YouTube API 已就緒");
@@ -151,11 +161,22 @@
     }
 
     function setupConn(conn) {
-        connections.push(conn);
         conn.on('open', () => {
-            if (isHost) conn.send({ type: 'sync', list: songList });
+            console.log("連線已完全開啟");
+            // 只有在連線成功後才存入陣列
+            if (!connections.find(c => c.peer === conn.peer)) {
+                connections.push(conn);
+            }
+            
+            if (isHost) {
+                conn.send({ type: 'sync', list: songList });
+            } else {
+                showToast("✅ 已成功連線至電視");
+            }
         });
+
         conn.on('data', (data) => {
+            // ... 原有的處理邏輯保持不變 ...
             if (data.type === 'cmd') {
                 if (data.action === 'add') addSong(data.song, false);
                 else if (data.action === 'insert') addSong(data.song, true);
@@ -166,6 +187,36 @@
                 updateUI();
             }
         });
+
+        conn.on('close', () => {
+            // 斷線處理
+            connections = connections.filter(c => c.peer !== conn.peer);
+            showToast("ℹ️ 設備已斷開連線");
+        });
+        
+        conn.on('error', (err) => {
+            console.error("連線錯誤:", err);
+        });
+    }
+
+    function handleAction(action) {
+        const url = document.getElementById('videoUrl').value.trim();
+        const songData = parseUrl(url);
+        if (!songData) return alert("請輸入正確網址");
+
+        if (isHost) {
+            addSong(songData, action === 'insert');
+        } else {
+            // 確保手機端有抓到有效的連線對象
+            const activeConn = connections.find(c => c.open);
+            if (activeConn) {
+                activeConn.send({ type: 'cmd', action: action, song: songData });
+                showToast("🚀 已送出點歌！");
+            } else {
+                alert("與電視連線中斷，請重新連線");
+            }
+        }
+        document.getElementById('videoUrl').value = '';
     }
 
     async function addSong(songData, isInsert) {
