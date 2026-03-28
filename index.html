@@ -3,42 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEMINI KTV</title>
+    <title>GEMINI KTV - 播放優化版</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; --bili: #fb7299; --danger: #ff4444; }
-        body { background: var(--bg); color: #fff; font-family: sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         .app-container { display: flex; gap: 20px; max-width: 1400px; width: 100%; height: 95vh; }
-        
         .main-area { flex: 1.5; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; gap: 15px; }
-        
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
         .video-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
         .active-player { display: block; }
-
         .side-area { flex: 1; background: #111; padding: 20px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 350px; }
         .side-controls { background: #222; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #444; }
         .side-controls input { width: 100%; padding: 12px; background: #333; border: 1px solid #555; color: #fff; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; outline: none; }
-        
         .btn-group { display: flex; gap: 8px; width: 100%; }
         .btn-group button { flex: 1; padding: 12px 5px; font-size: 0.9em; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn-add { background: var(--primary); color: #000; }
         .btn-insert { background: #ffcc00; color: #000; }
         .btn-skip { background: var(--danger); color: #fff; }
         .btn-join { background: var(--info); color: #000; padding: 8px 15px; }
-
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 5px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
         #my-id { color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; font-size: 1.2em; }
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; }
-        #volume-hint { color: #ffcc00; font-size: 0.85em; margin-top: 10px; text-align: center; }
+        #volume-hint { color: #ffcc00; font-size: 0.8em; margin-top: 10px; text-align: center; display: none; }
 
         @media (max-width: 768px) {
             body { overflow: auto; height: auto; }
-            .app-container { flex-direction: column; height: auto; }
+            .app-container { flex-direction: column; height: auto; gap: 10px; }
             #player-container, #volume-hint { display: none !important; }
-            .main-area { flex: none; order: 1; }
+            .main-area { flex: none; padding: 15px; order: 1; }
+            .header-controls { flex-direction: column; gap: 10px; align-items: flex-start; }
+            .header-controls div { width: 100%; display: flex; justify-content: space-between; }
             .side-area { order: 2; min-width: auto; height: 75vh; }
         }
     </style>
@@ -50,7 +47,7 @@
 <div class="app-container">
     <div class="main-area">
         <div class="header-controls">
-            <div><span style="color:#888; font-size:0.8em;">我的房號:</span> <span id="my-id" onclick="copyId()">連線中...</span></div>
+            <div><span style="color:#888; font-size:0.8em;">房號:</span> <span id="my-id" onclick="copyId()">連線中...</span></div>
             <div style="display:flex; gap:8px;">
                 <input type="text" id="peer-id" style="padding:8px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:120px;" placeholder="輸入房號">
                 <button class="btn-join" onclick="connectToHost()">連線</button>
@@ -60,7 +57,7 @@
             <div id="yt-player" class="video-frame"></div>
             <iframe id="bili-player" class="video-frame" allow="autoplay; fullscreen" allowfullscreen="true" referrerpolicy="no-referrer"></iframe>
         </div>
-        <div id="volume-hint">📢 提示：若畫面未自動播放，請點擊播放器或畫面任意處。</div>
+        <div id="volume-hint">🔊 Bilibili 播放中，若無聲音請點擊畫面任意處。</div>
     </div>
 
     <div class="side-area">
@@ -79,6 +76,8 @@
 
 <script>
     const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    
+    // 【連線優化：加入 Google STUN 伺服器穿透防火牆】
     const peer = new Peer(shortId, {
         config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }, { url: 'stun:stun1.l.google.com:19302' }] }
     });
@@ -93,7 +92,11 @@
     }
 
     peer.on('open', (id) => document.getElementById('my-id').innerText = id);
-    peer.on('connection', (c) => { conn = c; setupConn(); });
+    peer.on('connection', (c) => { 
+        conn = c; 
+        showToast("📢 隊友已加入！");
+        setupConn();
+    });
 
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
@@ -104,7 +107,7 @@
 
     function setupConn() {
         conn.on('open', () => {
-            showToast("✅ 連線成功！");
+            showToast("✅ 已成功連線");
             broadcastList();
         });
         conn.on('data', (data) => {
@@ -112,26 +115,29 @@
                 const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
                 songList = data.list;
                 updateUI();
+                // 僅電腦端執行播放
                 if (isNewFirst && songList.length > 0 && window.innerWidth > 768) playCurrent();
             }
         });
     }
 
-    function handleSongAction(action) {
-        const url = document.getElementById('videoUrl').value.trim();
+    function parseUrl(url) {
         const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
         const biliRegex = /(BV[a-zA-Z0-9]{10})/;
-        
-        let songData = null;
-        if (url.match(ytRegex)) songData = { id: url.match(ytRegex)[1], type: 'youtube' };
-        else if (url.match(biliRegex)) songData = { id: url.match(biliRegex)[1], type: 'bilibili' };
-        else if (url.startsWith('BV')) songData = { id: url, type: 'bilibili' };
-        else if (url.length === 11) songData = { id: url, type: 'youtube' };
+        const ytMatch = url.match(ytRegex);
+        if (ytMatch) return { id: ytMatch[1], type: 'youtube' };
+        const biliMatch = url.match(biliRegex);
+        if (biliMatch) return { id: biliMatch[1], type: 'bilibili' };
+        if (url.length === 11 && !url.startsWith('BV')) return { id: url, type: 'youtube' };
+        if (url.startsWith('BV')) return { id: url, type: 'bilibili' };
+        return null;
+    }
 
-        if (!songData) return alert("網址格式錯誤");
+    function handleSongAction(action) {
+        const songData = parseUrl(document.getElementById('videoUrl').value.trim());
+        if (!songData) return alert("無法辨識此網址");
         if (action === 'add') songList.push(songData);
         else songList.splice(1, 0, songData);
-        
         broadcastList(); updateUI();
         if (songList.length === 1 && window.innerWidth > 768) playCurrent();
         document.getElementById('videoUrl').value = '';
@@ -140,19 +146,22 @@
     function playCurrent() {
         if (songList.length === 0 || window.innerWidth <= 768) return;
         const current = songList[0];
+        const hint = document.getElementById('volume-hint');
         stopAllPlayers();
 
         if (current.type === 'youtube') {
+            hint.style.display = 'none';
             document.getElementById('yt-player').classList.add('active-player');
             if (ytPlayer && ytPlayer.loadVideoById) {
                 ytPlayer.loadVideoById(current.id);
-                // 嘗試強制播放 (若失敗則是瀏覽器攔截)
-                setTimeout(() => { if (ytPlayer.getPlayerState() !== 1) ytPlayer.playVideo(); }, 1000);
+                // 強制執行一次播放動作以避開部分攔截
+                setTimeout(() => ytPlayer.playVideo(), 500);
             }
-        } else {
-            const bili = document.getElementById('bili-player');
-            bili.src = `https://player.bilibili.com/player.html?bvid=${current.id}&page=1&high_quality=1&autoplay=1&muted=0`;
-            bili.classList.add('active-player');
+        } else if (current.type === 'bilibili') {
+            hint.style.display = 'block';
+            const biliFrame = document.getElementById('bili-player');
+            biliFrame.src = `https://player.bilibili.com/player.html?bvid=${current.id}&page=1&high_quality=1&autoplay=1&muted=0`;
+            biliFrame.classList.add('active-player');
         }
     }
 
@@ -165,23 +174,27 @@
 
     function broadcastList() { if (conn && conn.open) conn.send({ type: 'updateList', list: songList }); }
     function skipSong() { songList.shift(); broadcastList(); updateUI(); if (songList.length > 0) playCurrent(); else stopAllPlayers(); }
+
     function updateUI() {
         const box = document.getElementById('list-content');
-        box.innerHTML = songList.map((s, i) => `
-            <div class="song-item">
-                <span style="color:${i===0?'#ff00ff':'#fff'}">${i===0?'▶️':''} [${s.type==='youtube'?'YT':'BILI'}] ${s.id}</span>
-                <button style="background:transparent; color:#666; border:none;" onclick="removeSong(${i})">❌</button>
-            </div>`).join('');
+        box.innerHTML = songList.map((song, index) => {
+            const tag = song.type === 'youtube' ? 'YT' : 'BILI';
+            return `
+                <div class="song-item">
+                    <span style="color:${index===0?'#ff00ff':'#fff'}">${index===0?'▶️':''} [${tag}] ${song.id}</span>
+                    <button style="background:transparent; color:#666; border:none; cursor:pointer;" onclick="removeSong(${index})">❌</button>
+                </div>`;
+        }).join('');
     }
-    function removeSong(i) { if (i === 0) skipSong(); else { songList.splice(i, 1); broadcastList(); updateUI(); } }
+
+    function removeSong(index) { if (index === 0) skipSong(); else { songList.splice(index, 1); broadcastList(); updateUI(); } }
     function copyId() { navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); }
 
-    // YouTube API 穩定初始化
     function onYouTubeIframeAPIReady() {
         if (window.innerWidth <= 768) return;
         ytPlayer = new YT.Player('yt-player', {
             videoId: songList[0]?.type === 'youtube' ? songList[0].id : '',
-            playerVars: { 'autoplay': 1, 'rel': 0, 'playsinline': 1 },
+            playerVars: { 'autoplay': 1, 'rel': 0, 'playsinline': 1, 'origin': window.location.origin },
             events: { 
                 'onReady': (e) => { if(songList[0]?.type==='youtube') e.target.playVideo(); },
                 'onStateChange': (e) => { if (e.data === 0) skipSong(); } 
