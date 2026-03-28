@@ -92,18 +92,8 @@
     let songList = []; 
     let isHost = true;
     let connections = [];
-    const peer = new Peer(Math.random().toString(36).substring(2, 8).toUpperCase(), {
-        config: {
-            'iceServers': [
-                { url: 'stun:stun.l.google.com:19302' },
-                { url: 'stun:stun1.l.google.com:19302' },
-                { url: 'stun:stun2.l.google.com:19302' },
-                { url: 'stun:stun3.l.google.com:19302' },
-                { url: 'stun:stun4.l.google.com:19302' }
-            ],
-            'sdpSemantics': 'unified-plan'
-        }
-    });
+    let peer = null;
+    
     // YouTube API 加載監聽
     function onYouTubeIframeAPIReady() {
         console.log("YouTube API 已就緒");
@@ -141,17 +131,37 @@
             document.getElementById('role-tag').innerText = "(賓客模式)";
         }
     }
-
     function initPeer(id) {
-        peer = new Peer(id);
+        // 這裡進行賦值，因為上面宣告是 let，所以不會報錯
+        peer = new Peer(id, {
+            config: {
+                'iceServers': [
+                    { url: 'stun:stun.l.google.com:19302' },
+                    { url: 'stun:stun1.l.google.com:19302' },
+                    { url: 'stun:stun2.l.google.com:19302' },
+                    { url: 'stun:stun3.l.google.com:19302' },
+                    { url: 'stun:stun4.l.google.com:19302' }
+                ],
+                'sdpSemantics': 'unified-plan'
+            }
+        });
+
         peer.on('open', (myId) => {
             document.getElementById('my-id').innerText = myId;
             document.getElementById('status-dot').style.background = 'var(--primary)';
+            console.log("PeerID 已開啟: " + myId);
         });
 
         peer.on('connection', (conn) => {
             setupConn(conn);
             showToast("📢 賓客已進入包廂");
+        });
+        
+        peer.on('error', (err) => {
+            console.error("PeerJS 發生錯誤:", err.type);
+            if(err.type === 'peer-unavailable') {
+                alert("找不到該房號，請檢查輸入是否正確");
+            }
         });
     }
 
