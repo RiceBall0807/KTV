@@ -429,6 +429,27 @@
         t.style.display = 'block'; 
         setTimeout(() => t.style.display = 'none', 3000); 
     }
+
+    window.onload = function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomFromUrl = urlParams.get('room');
+
+        if (roomFromUrl) {
+            const joinInput = document.getElementById('join-id');
+            if (joinInput) {
+                joinInput.value = roomFromUrl.toUpperCase();
+                console.log("偵測到自動連線房號：" + roomFromUrl);
+                
+                // 顯示提示，告知使用者正在自動登入
+                showToast("🚀 正在自動連線至包廂 " + roomFromUrl + "...");
+
+                // 延遲 800 毫秒自動執行連線，給予系統一點緩衝時間
+                setTimeout(() => {
+                    startSession('join');
+                }, 800);
+            }
+        }
+    };
 </script>
 <script src="https://www.youtube.com/iframe_api"></script>
 </body>
