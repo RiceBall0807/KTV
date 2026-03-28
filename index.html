@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>P2P KTV - 預設歌曲版</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { background: #121212; color: #00ff00; font-family: sans-serif; text-align: center; padding: 20px; }
+        .container { max-width: 800px; margin: auto; border: 2px solid #333; padding: 20px; border-radius: 15px; }
+        #player-wrapper { background: #000; margin-bottom: 20px; border: 2px solid #00ff00; width: 100%; aspect-ratio: 16 / 9; }
+        #player { width: 100%; height: 100%; }
+        .controls { margin-bottom: 20px; display: flex; gap: 10px; justify-content: center; }
+        input { padding: 10px; background: #222; border: 1px solid #00ff00; color: #fff; border-radius: 5px; width: 300px; }
+        button { padding: 10px 20px; background: #00ff00; color: #000; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #playlist-box { text-align: left; background: #222; padding: 15px; border-radius: 10px; border-left: 5px solid #00ff00; }
+        .song-item { padding: 8px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .playing { color: #ff00ff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🎤 專業 P2P 點歌房</h1>
+    <div style="margin-bottom: 10px; font-size: 0.8em; color: #888;">
+        連線 ID: <span id="my-id" style="color:white">取得中...</span>
+    </div>
+    
+    <div class="controls">
+        <input type="text" id="peer-id" placeholder="貼上房主 ID 加入">
+        <button onclick="connectToHost()">加入房間</button>
+    </div>
+
+    <div id="player-wrapper">
+        <div id="player"></div>
+    </div>
+
+    <div class="controls">
+        <input type="text" id="videoUrl" placeholder="貼上 YouTube 網址點歌...">
+        <button onclick="addSong()">確認點歌</button>
+    </div>
+
+    <div id="playlist-box">
+        <strong>📜 目前播放清單：</strong>
+        <div id="list-content">載入中...</div>
+    </div>
+</div>
+
+<script>
+    let peer = new Peer();
+    let conn;
+    let player;
+    // --- 修改處：預設歌曲清單 ---
+    let songList = ['QDia3e12czc']; 
+
+    peer.on('open', (id) => document.getElementById('my-id').innerText = id);
+    peer.on('connection', (c) => { 
+        conn = c; 
+        listenData(); 
+        // 房主主動把目前的清單同步給新進來的人
+        conn.send({ type: 'syncList', list: songList });
+    });
+
+    function connectToHost() {
+        const id = document.getElementById('peer-id').value;
+        conn = peer.connect(id);
+        listenData();
+    }
+
+    function listenData() {
+        conn.on('data', (data) => {
+            if (data.type === 'newSong') {
+                songList.push(data.videoId);
+                updateUI();
+                checkAndPlay();
+            } else if (data.type === 'syncList') {
+                songList = data.list;
+                updateUI();
+                checkAndPlay();
+            }
+        });
+    }
+
+    function extractVideoId(url) {
+        const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        const match = url.match(regex);
+        return match ? match[1] : (url.length === 11 ? url : null);
+    }
+
+    function addSong() {
+        const url = document.getElementById('videoUrl').value;
+        const vid = extractVideoId(url);
+        
+        if (vid) {
+            songList.push(vid);
+            updateUI();
+            checkAndPlay();
+            if (conn && conn.open) conn.send({ type: 'newSong', videoId: vid });
+            document.getElementById('videoUrl').value = '';
+        } else {
+            alert("網址格式無法辨識！");
+        }
+    }
+
+    function updateUI() {
+        const box = document.getElementById('list-content');
+        if (songList.length === 0) {
+            box.innerText = "清單目前是空的";
+            return;
+        }
+        box.innerHTML = songList.map((id, index) => `
+            <div class="song-item">
+                <span class="${index === 0 ? 'playing' : ''}">
+                    ${index === 0 ? '▶️ 正在播放' : '⏳ 待播中'}：${id}
+                </span>
+                <button style="padding:2px 5px; font-size:10px; background:#444; color:white;" onclick="removeSong(${index})">刪除</button>
+            </div>
+        `).join('');
+    }
+
+    function checkAndPlay() {
+        if (player && player.getPlayerState) {
+            const state = player.getPlayerState();
+            // 如果影片結束、未啟動、或剛載入，就播第一首
+            if (state !== 1 && state !== 3 && songList.length > 0) {
+                player.loadVideoById(songList[0]);
+            }
+        }
+    }
+
+    function removeSong(index) {
+        songList.splice(index, 1);
+        updateUI();
+        if (index === 0 && songList.length > 0) {
+            player.loadVideoById(songList[0]);
+        } else if (songList.length === 0) {
+            player.stopVideo();
+        }
+    }
+
+    // --- 修改處：設定預設播放影片 ---
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('player', {
+            videoId: 'QDia3e12czc', // 預設載入歌曲
+            playerVars: { 
+                'autoplay': 0, // 設為 0 以防瀏覽器阻擋，讓使用者手動點擊第一次播放
+                'rel': 0,
+                'origin': window.location.origin 
+            },
+            events: {
+                'onReady': () => {
+                    updateUI();
+                    console.log("KTV 系統準備就緒");
+                },
+                'onStateChange': (e) => {
+                    if (e.data === 0) { // 播完了
+                        songList.shift();
+                        updateUI();
+                        if (songList.length > 0) player.loadVideoById(songList[0]);
+                    }
+                },
+                'onError': (e) => {
+                    if (e.data === 150 || e.data === 153) {
+                        alert("此影片受版權保護無法嵌入，將自動跳過。");
+                        songList.shift();
+                        updateUI();
+                        if (songList.length > 0) player.loadVideoById(songList[0]);
+                    }
+                }
+            }
+        });
+    }
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+
+</body>
+</html>
