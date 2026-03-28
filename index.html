@@ -39,6 +39,16 @@
         .join-btn { background: var(--info); color: #000; }
         .start-btn:hover { transform: scale(1.05); opacity: 0.9; }
 
+        /* 隱藏專用 */
+        .hidden { display: none !important; }
+
+        /* 針對賓客模式的排版優化 */
+        .guest-view .main-area { flex: 0; padding: 10px; min-height: auto; }
+        .guest-view #player-container { display: none; } /* 賓客不看影片 */
+        .guest-view #my-id { font-size: 24px !important; color: #888; } /* 房號縮小 */
+        .guest-view .app-container { flex-direction: column; height: auto; overflow: auto; }
+        .guest-view .side-area { max-width: none; flex: 1; }
+
         @media (max-width: 1024px) {
             body { overflow: auto; height: auto; }
             .app-container { flex-direction: column; height: auto; display: none; }
@@ -99,38 +109,46 @@
         console.log("YouTube API 已就緒");
         isApiReady = true;
     }
-
-    // 啟動包廂或加入包廂
     function startSession(mode) {
-        document.getElementById('overlay').style.display = 'none';
-        document.getElementById('main-app').style.display = 'flex';
+        const overlay = document.getElementById('overlay');
+        const appContainer = document.getElementById('main-app');
+        
+        overlay.style.display = 'none';
+        appContainer.style.display = 'flex';
         
         const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
         
         if (mode === 'host') {
             isHost = true;
             initPeer(shortId);
-            document.getElementById('role-tag').innerText = "(房主模式)";
+            document.getElementById('role-tag').innerText = "(電視房主)";
             
-            // 【新增】預設播放歌曲邏輯
-            const defaultUrl = "https://youtu.be/dQw4w9WgXcQ?si=Qjg-gq3i4VdSwEfj";
+            // 房主預設點歌
+            const defaultUrl = "https://youtu.be/dQw4w9WgXcQ";
             const defaultSong = parseUrl(defaultUrl);
             if (defaultSong) {
-                // 給予一個預設標題，稍後 noembed 會自動更新它
-                defaultSong.title = "Rick Astley - Never Gonna Give You Up (Official Music Video)";
+                defaultSong.title = "Rick Astley - Never Gonna Give You Up";
                 addSong(defaultSong, false);
             }
-            
         } else {
             isHost = false;
             const targetId = document.getElementById('join-id').value.trim().toUpperCase();
             if(!targetId) return location.reload();
+            
+            // --- 賓客模式視覺調整 ---
+            document.body.classList.add('guest-view'); // 套用賓客樣式
+            document.getElementById('player-container').classList.add('hidden'); // 隱藏播放器
+            // -----------------------
+
             initPeer(shortId);
-            // 延遲連線確保 Peer 已就緒
             setTimeout(() => connectToHost(targetId), 1000);
-            document.getElementById('role-tag').innerText = "(賓客模式)";
+            document.getElementById('role-tag').innerText = "(已連線至房號: " + targetId + ")";
+            
+            // 賓客模式下，將原本顯示自己房號的地方改顯示「連線目標」
+            document.getElementById('my-id').innerText = targetId;
         }
     }
+    
     function initPeer(id) {
         // 這裡進行賦值，因為上面宣告是 let，所以不會報錯
         peer = new Peer(id, {
