@@ -2,15 +2,20 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>P2P KTV - 同步修正旗艦版</title>
+    <title>P2P KTV - YouTube & Bilibili 雙支援版</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; }
+        :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; --bili: #fb7299; }
         body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         .app-container { display: flex; gap: 20px; max-width: 1400px; width: 100%; height: 95vh; }
         .main-area { flex: 1.5; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; }
         .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 10px 15px; border-radius: 12px; margin-bottom: 15px; gap: 15px; }
-        #player-wrapper { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; }
+        
+        /* 播放器容器 */
+        #player-container { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
+        .video-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
+        .active-player { display: block; }
+
         .side-area { flex: 1; background: #111; padding: 20px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 400px; }
         .side-controls { background: #222; padding: 15px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #444; }
         .side-controls input { width: 100%; padding: 10px; background: #333; border: 1px solid #555; color: #fff; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; outline: none; }
@@ -20,11 +25,14 @@
         .btn-insert { background: #ffcc00; }
         .btn-skip { background: #ff4444; color: #fff; }
         .btn-join { background: var(--info); color: #000; padding: 8px 15px; }
+        
         #list-content { flex-grow: 1; overflow-y: auto; }
         .song-item { padding: 10px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
+        .tag-yt { color: #ff0000; font-weight: bold; margin-right: 5px; }
+        .tag-bili { color: var(--bili); font-weight: bold; margin-right: 5px; }
+        
         #my-id { color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; }
-        #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; }
     </style>
 </head>
 <body>
@@ -43,13 +51,17 @@
                 <button class="btn-join" onclick="connectToHost()">進入房間</button>
             </div>
         </div>
-        <div id="player-wrapper"><div id="player"></div></div>
+        
+        <div id="player-container">
+            <div id="yt-player" class="video-frame"></div>
+            <iframe id="bili-player" class="video-frame" allowfullscreen="true" sandbox="allow-top-navigation allow-same-origin allow-forms allow-scripts"></iframe>
+        </div>
     </div>
 
     <div class="side-area">
-        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 歌單管理</h3>
+        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 雙平台點歌台</h3>
         <div class="side-controls">
-            <input type="text" id="videoUrl" placeholder="貼上 YouTube 網址...">
+            <input type="text" id="videoUrl" placeholder="貼上 YT 連結或 Bilibili BV號...">
             <div class="btn-group">
                 <button class="btn-add" onclick="handleSongAction('add')">點歌</button>
                 <button class="btn-insert" onclick="handleSongAction('insert')">🚀 插播</button>
@@ -63,8 +75,8 @@
 <script>
     const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
     const peer = new Peer(shortId); 
-    let conn, player;
-    let songList = ['QDia3e12czc']; // 預設歌曲
+    let conn, ytPlayer;
+    let songList = [{ id: 'QDia3e12czc', type: 'youtube' }]; 
 
     function showToast(msg) {
         const t = document.getElementById('toast');
@@ -73,114 +85,124 @@
     }
 
     peer.on('open', (id) => document.getElementById('my-id').innerText = id);
-    
-    // 【關鍵修正：房主端監聽】
     peer.on('connection', (c) => { 
         conn = c; 
-        showToast("📢 有新隊友加入房間了！");
-        
-        // 當連線建立成功，房主立刻把最新的歌單發送給新人
-        conn.on('open', () => {
-            broadcastList(); 
-        });
-
+        showToast("📢 隊友已連線");
+        conn.on('open', () => broadcastList());
         listenData(); 
     });
-
-    peer.on('error', (err) => { if(err.type === 'unavailable-id') window.location.reload(); });
 
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
         conn = peer.connect(id);
-        
-        conn.on('open', () => {
-            showToast("✅ 成功進入房間！清單同步中...");
-            document.querySelector('.btn-join').innerText = "已連線";
-            document.querySelector('.btn-join').style.background = "#444";
-        });
-        
+        conn.on('open', () => showToast("✅ 已成功同步房間"));
         listenData();
     }
 
     function listenData() {
-        if (!conn) return;
         conn.on('data', (data) => {
             if (data.type === 'updateList') {
-                const oldFirst = songList[0];
-                songList = data.list; // 接收來自對方的最新清單
+                const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
+                songList = data.list;
                 updateUI();
-                // 如果清單第一首變了，則切換播放內容
-                if (songList.length > 0 && oldFirst !== songList[0]) playCurrent();
+                if (isNewFirst && songList.length > 0) playCurrent();
             }
         });
     }
 
-    function extractVideoId(url) {
-        const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-        const match = url.match(regex);
-        return match ? match[1] : (url.length === 11 ? url : null);
+    // 解析網址類型
+    function parseUrl(url) {
+        // YouTube Regex
+        const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        // Bilibili Regex (支援 BV 號碼直接輸入或完整連結)
+        const biliRegex = /(BV[a-zA-Z0-9]{10})/;
+        
+        const ytMatch = url.match(ytRegex);
+        if (ytMatch) return { id: ytMatch[1], type: 'youtube' };
+        
+        const biliMatch = url.match(biliRegex);
+        if (biliMatch) return { id: biliMatch[1], type: 'bilibili' };
+        
+        return null;
     }
 
     function handleSongAction(action) {
-        const vid = extractVideoId(document.getElementById('videoUrl').value.trim());
-        if (!vid) return alert("網址無效");
+        const songData = parseUrl(document.getElementById('videoUrl').value.trim());
+        if (!songData) return alert("無法辨識此網址，請輸入 YouTube 連結或 Bilibili BV號");
 
-        if (action === 'add') songList.push(vid); // 點歌：加在末端
-        else songList.splice(1, 0, vid); // 插播：加在下一首
+        if (action === 'add') songList.push(songData);
+        else songList.splice(1, 0, songData);
         
-        broadcastList(); // 點歌後立刻同步給所有人
+        broadcastList(); 
         updateUI();
-        
-        if (player.getPlayerState() !== 1) playCurrent();
+        if (songList.length === 1) playCurrent();
         document.getElementById('videoUrl').value = '';
     }
 
     function skipSong() {
         if (songList.length === 0) return;
-        songList.shift(); // 移除目前播放歌曲
-        broadcastList(); 
-        updateUI();
+        songList.shift();
+        broadcastList(); updateUI();
         if (songList.length > 0) playCurrent();
-        else player.stopVideo();
+        else stopAllPlayers();
     }
 
-    function broadcastList() { 
-        if (conn && conn.open) {
-            conn.send({ type: 'updateList', list: songList }); 
-        } 
+    function playCurrent() {
+        if (songList.length === 0) return;
+        const current = songList[0];
+        stopAllPlayers();
+
+        if (current.type === 'youtube') {
+            document.getElementById('yt-player').classList.add('active-player');
+            if (ytPlayer && ytPlayer.loadVideoById) {
+                ytPlayer.loadVideoById(current.id);
+            }
+        } else if (current.type === 'bilibili') {
+            const biliFrame = document.getElementById('bili-player');
+            biliFrame.src = `https://player.bilibili.com/player.html?bvid=${current.id}&page=1&high_quality=1&autoplay=1`;
+            biliFrame.classList.add('active-player');
+        }
     }
+
+    function stopAllPlayers() {
+        // 隱藏所有播放器
+        document.getElementById('yt-player').classList.remove('active-player');
+        document.getElementById('bili-player').classList.remove('active-player');
+        document.getElementById('bili-player').src = "";
+        if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+    }
+
+    function broadcastList() { if (conn && conn.open) conn.send({ type: 'updateList', list: songList }); }
 
     function updateUI() {
         const box = document.getElementById('list-content');
-        box.innerHTML = songList.map((id, index) => `
-            <div class="song-item">
-                <span style="color:${index===0?'#ff00ff':'#fff'}">${index===0?'▶️':'⏳'} ${id}</span>
-                <button style="padding:2px 5px; background:#333; color:#fff; font-size:10px; border:none; cursor:pointer;" onclick="removeSong(${index})">❌</button>
-            </div>
-        `).join('');
+        box.innerHTML = songList.map((song, index) => {
+            const tag = song.type === 'youtube' ? '<span class="tag-yt">YT</span>' : '<span class="tag-bili">Bili</span>';
+            return `
+                <div class="song-item">
+                    <span style="color:${index===0?'#ff00ff':'#fff'}">${index===0?'▶️':''} ${tag} ${song.id}</span>
+                    <button style="padding:2px 5px; background:#333; color:#fff; font-size:10px; border:none; cursor:pointer;" onclick="removeSong(${index})">❌</button>
+                </div>
+            `;
+        }).join('');
     }
 
-    function playCurrent() { if (player && songList.length > 0) player.loadVideoById(songList[0]); }
-    
-    function removeSong(index) { 
-        if (index === 0) skipSong(); 
-        else { 
-            songList.splice(index, 1); 
-            broadcastList(); 
-            updateUI(); 
-        } 
+    function removeSong(index) {
+        if (index === 0) skipSong();
+        else { songList.splice(index, 1); broadcastList(); updateUI(); }
     }
 
     function copyId() { navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); }
 
+    // YouTube API
     function onYouTubeIframeAPIReady() {
-        player = new YT.Player('player', {
-            videoId: songList[0],
-            playerVars: { 'autoplay': 0, 'rel': 0, 'origin': window.location.origin },
+        ytPlayer = new YT.Player('yt-player', {
+            videoId: songList[0].type === 'youtube' ? songList[0].id : '',
+            playerVars: { 'autoplay': 1, 'rel': 0 },
             events: { 
-                'onReady': () => updateUI(), 
-                'onStateChange': (e) => { if (e.data === 0) skipSong(); } // 播完自動跳下一首
+                'onReady': () => { if(songList[0].type==='youtube') playCurrent(); },
+                'onStateChange': (e) => { if (e.data === 0) skipSong(); } 
             }
         });
     }
