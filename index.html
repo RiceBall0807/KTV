@@ -167,42 +167,47 @@
             }
         });
     }
-    
-	async function addSong(songData, isInsert) {
-        // 1. 先加入清單 (此時 title 是預設的 "YT: ID")
+
+    async function addSong(songData, isInsert) {
+        // 1. 如果是 YouTube，先試著抓取標題
+        if (songData.type === 'youtube') {
+            try {
+                // 設定一個超時機制，避免 API 沒反應導致點歌卡住
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+                const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`, { signal: controller.signal });
+                const json = await res.json();
+                clearTimeout(timeoutId);
+
+                if (json && json.title) {
+                    songData.title = json.title;
+                }
+            } catch (e) {
+                console.warn("標題抓取逾時或失敗，使用 ID 替代");
+                songData.title = "YouTube 影片 (" + songData.id + ")";
+            }
+        }
+
+        // 2. 現在已經拿到標題（或備案名稱）了，再放入清單
         if (isInsert) {
-            songList.splice(1, 0, songData); 
+            songList.splice(1, 0, songData);
         } else {
             songList.push(songData);
         }
-        
-        updateUI();
-        if (isHost && songList.length === 1) playCurrent();
-        broadcast();
 
-        // 2. 只有房主負責抓標題，抓到再同步給所有人
-        if (isHost && songData.type === 'youtube') {
-            try {
-                // 強制使用 https 並傳送完整的播放網址
-                const apiUrl = `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`;
-                const res = await fetch(apiUrl);
-                const json = await res.json();
-                
-                if (json && json.title) {
-                    // 找到清單中對應的歌曲並更新標題
-                    const item = songList.find(s => s.id === songData.id);
-                    if (item) {
-                        item.title = json.title;
-                        console.log("成功抓取標題:", json.title);
-                        updateUI(); 
-                        broadcast(); // 抓到標題後再次廣播給賓客
-                    }
-                }
-            } catch (e) {
-                console.error("標題抓取失敗，保持原始 ID:", e);
+        // 3. 執行 UI 更新與播放邏輯
+        updateUI();
+
+        if (isHost) {
+            if (songList.length === 1) {
+                playCurrent();
             }
+            // 房主統一廣播最終版本的歌單給所有賓客
+            broadcast();
         }
     }
+	
 
     function playCurrent() {
         if (songList.length === 0) return;
