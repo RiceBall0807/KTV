@@ -111,11 +111,22 @@
             isHost = true;
             initPeer(shortId);
             document.getElementById('role-tag').innerText = "(房主模式)";
+            
+            // 【新增】預設播放歌曲邏輯
+            const defaultUrl = "https://youtu.be/dQw4w9WgXcQ?si=Qjg-gq3i4VdSwEfj";
+            const defaultSong = parseUrl(defaultUrl);
+            if (defaultSong) {
+                // 給予一個預設標題，稍後 noembed 會自動更新它
+                defaultSong.title = "Rick Astley - Never Gonna Give You Up (Official Music Video)";
+                addSong(defaultSong, false);
+            }
+            
         } else {
             isHost = false;
             const targetId = document.getElementById('join-id').value.trim().toUpperCase();
             if(!targetId) return location.reload();
             initPeer(shortId);
+            // 延遲連線確保 Peer 已就緒
             setTimeout(() => connectToHost(targetId), 1000);
             document.getElementById('role-tag').innerText = "(賓客模式)";
         }
