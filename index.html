@@ -3,46 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEMINI KTV - 劇院穩定版</title>
+    <title>GEMINI KTV - 完美相容版</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #0d0d0d; --panel: #1a1a1a; --primary: #00ff00; --info: #00ccff; --danger: #ff4444; }
         body { background: var(--bg); color: #fff; font-family: sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
+        
         .app-container { display: flex; gap: 15px; width: 100%; max-width: 1600px; height: 95vh; }
         
-        /* 【影片區最大化】 */
-        .main-area { flex: 3; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        /* --- 影片區 --- */
+        .main-area { flex: 3; background: var(--panel); padding: 15px; border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5); min-width: 0; }
         
-        /* 房號絕對放大 */
-        .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 15px; border-radius: 12px; margin-bottom: 15px; }
+        /* 房號區域 */
+        .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 15px; border-radius: 12px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        
         #my-id { 
             color: var(--primary); font-weight: bold; font-family: monospace; 
-            font-size: 80px !important; line-height: 1; letter-spacing: 5px; text-shadow: 0 0 15px rgba(0,255,0,0.6);
-            cursor: pointer; text-decoration: underline;
+            font-size: 80px !important; line-height: 1; letter-spacing: 5px; 
+            text-shadow: 0 0 15px rgba(0,255,0,0.6); cursor: pointer;
         }
 
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
         .video-frame { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
         .active-player { display: block; }
 
-        /* 【歌單區縮小】 */
-        .side-area { flex: 0.8; background: #111; padding: 20px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 300px; max-width: 380px; }
-        .side-controls input { width: 100%; padding: 12px; background: #333; border: 1px solid #555; color: #fff; border-radius: 6px; margin-bottom: 10px; box-sizing: border-box; }
+        /* --- 歌單區 (側邊欄) --- */
+        .side-area { flex: 0.8; background: #111; padding: 15px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 300px; max-width: 380px; }
+        .side-controls input { width: 100%; padding: 12px; background: #333; border: 1px solid #555; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; }
         .btn-group { display: flex; gap: 8px; }
-        .btn-group button { flex: 1; padding: 12px 5px; font-weight: bold; border-radius: 6px; border: none; cursor: pointer; }
+        .btn-group button { flex: 1; padding: 12px 5px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; }
         
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 5px; }
-        .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
-        .song-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+        .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+        .song-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; font-size: 0.95em; }
 
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; display: none; z-index: 1000; }
 
+        /* --- 【關鍵：手機版 RWD 修復】 --- */
         @media (max-width: 1024px) {
             body { overflow: auto; height: auto; }
-            .app-container { flex-direction: column; height: auto; }
+            .app-container { flex-direction: column; height: auto; padding-bottom: 50px; }
+            
+            .main-area { flex: none; width: 100%; box-sizing: border-box; }
+            /* 手機版隱藏播放器，只留房號跟連線 */
             #player-container { display: none !important; }
-            .side-area { flex: none; max-width: none; width: 100%; height: 70vh; }
-            #my-id { font-size: 50px !important; }
+            
+            #my-id { font-size: 45px !important; letter-spacing: 2px; } /* 手機版房號縮小 */
+            
+            .side-area { flex: none; width: 100%; max-width: none; min-width: 0; height: auto; min-height: 500px; box-sizing: border-box; }
+            .header-controls { flex-direction: column; text-align: center; }
         }
     </style>
 </head>
@@ -53,10 +62,10 @@
 <div class="app-container">
     <div class="main-area">
         <div class="header-controls">
-            <div><span style="color:#888; font-size:0.9em;">房號:</span> <span id="my-id" onclick="copyId()">連線中...</span></div>
-            <div style="display:flex; gap:8px;">
-                <input type="text" id="peer-id" style="padding:10px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:100px;" placeholder="房號">
-                <button onclick="connectToHost()" style="padding:8px 15px; background:var(--info); border:none; border-radius:6px; font-weight:bold; cursor:pointer;">連線</button>
+            <div><span style="color:#888; font-size:14px;">ROOM:</span> <span id="my-id" onclick="copyId()">...</span></div>
+            <div style="display:flex; gap:8px; align-items: center;">
+                <input type="text" id="peer-id" style="padding:10px; background:#444; border:none; color:#fff; border-radius:6px; width:90px;" placeholder="房號">
+                <button onclick="connectToHost()" style="padding:10px 15px; background:var(--info); border:none; border-radius:6px; font-weight:bold; cursor:pointer;">連線</button>
             </div>
         </div>
         <div id="player-container">
@@ -66,13 +75,15 @@
     </div>
 
     <div class="side-area">
-        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 點歌清單 <span id="role-tag" style="font-size:0.5em; color:#888;"></span></h3>
+        <h3 style="margin:0 0 15px 0; color: var(--primary); display: flex; justify-content: space-between;">
+            📜 清單 <span id="role-tag" style="font-size:12px; color:#666;"></span>
+        </h3>
         <div class="side-controls">
-            <input type="text" id="videoUrl" placeholder="貼上網址 (YT / Bili)...">
+            <input type="text" id="videoUrl" placeholder="貼上網址 (YT/Bili)...">
             <div class="btn-group">
                 <button style="background:var(--primary); color:#000;" onclick="handleAction('add')">點歌</button>
-                <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">🚀 插播</button>
-                <button style="background:var(--danger); color:#fff;" onclick="skipSong()">⏭️ 切歌</button>
+                <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">插播</button>
+                <button style="background:var(--danger); color:#fff;" onclick="skipSong()">切歌</button>
             </div>
         </div>
         <div id="list-content"></div>
@@ -87,7 +98,6 @@
     let isHost = true;
     let ytPlayer;
 
-    // --- 基礎工具 ---
     function showToast(msg) {
         const t = document.getElementById('toast');
         t.innerText = msg; t.style.display = 'block';
@@ -96,10 +106,9 @@
 
     peer.on('open', (id) => {
         document.getElementById('my-id').innerText = id;
-        document.getElementById('role-tag').innerText = "(房主模式)";
+        document.getElementById('role-tag').innerText = "(房主)";
     });
 
-    // --- 連線邏輯 ---
     peer.on('connection', (conn) => {
         isHost = true;
         setupConn(conn);
@@ -110,24 +119,21 @@
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
         isHost = false;
-        document.getElementById('role-tag').innerText = "(賓客模式)";
+        document.getElementById('role-tag').innerText = "(賓客)";
         const conn = peer.connect(id);
         setupConn(conn);
     }
 
     function setupConn(conn) {
         connections.push(conn);
-        conn.on('open', () => {
-            if (isHost) conn.send({ type: 'sync', list: songList });
-        });
+        conn.on('open', () => { if (isHost) conn.send({ type: 'sync', list: songList }); });
         conn.on('data', (data) => {
             if (data.type === 'sync') {
-                // 收到新歌單，判斷是否要切換首曲播放
-                const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
+                const isNewFirst = songList.length === 0 || (data.list.length > 0 && songList[0]?.id !== data.list[0]?.id);
                 songList = data.list;
                 updateUI();
                 if (isHost && isNewFirst && songList.length > 0) playCurrent();
-                if (isHost) broadcast(); // 房主負責同步給所有賓客
+                if (isHost) broadcast();
             }
         });
     }
@@ -136,33 +142,26 @@
         connections.forEach(c => { if(c && c.open) c.send({ type: 'sync', list: songList }); });
     }
 
-    // --- 點歌與播放邏輯 ---
     async function handleAction(action) {
         const url = document.getElementById('videoUrl').value.trim();
         const songData = parseUrl(url);
-        if (!songData) return alert("無法辨識此網址");
+        if (!songData) return alert("請貼上正確網址");
 
-        // 嘗試抓取歌名 (僅 YouTube)
         if (songData.type === 'youtube') {
             try {
                 const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`);
                 const json = await res.json();
                 songData.title = json.title || songData.id;
             } catch(e) { songData.title = songData.id; }
-        } else {
-            songData.title = "BiliBili: " + songData.id;
-        }
+        } else { songData.title = "BiliBili: " + songData.id; }
 
         if (action === 'add') songList.push(songData);
         else songList.splice(1, 0, songData);
 
         updateUI();
         if (isHost && songList.length === 1) playCurrent();
-        
-        // 發送整份歌單同步
         if (isHost) broadcast(); 
         else connections.forEach(c => { if(c.open) c.send({ type: 'sync', list: songList }); });
-        
         document.getElementById('videoUrl').value = '';
     }
 
@@ -170,12 +169,8 @@
         if (songList.length === 0) return;
         songList.shift();
         updateUI();
-        if (isHost) {
-            if (songList.length > 0) playCurrent(); else stopAll();
-            broadcast();
-        } else {
-            connections.forEach(c => { if(c.open) c.send({ type: 'sync', list: songList }); });
-        }
+        if (isHost) { if (songList.length > 0) playCurrent(); else stopAll(); broadcast(); }
+        else { connections.forEach(c => { if(c.open) c.send({ type: 'sync', list: songList }); }); }
     }
 
     function removeSong(index) {
@@ -192,7 +187,6 @@
         if (songList.length === 0 || window.innerWidth <= 1024) return;
         const cur = songList[0];
         stopAll();
-
         if (cur.type === 'youtube') {
             document.getElementById('yt-player').classList.add('active-player');
             if (ytPlayer && ytPlayer.loadVideoById) ytPlayer.loadVideoById(cur.id);
@@ -204,9 +198,7 @@
     }
 
     function stopAll() {
-        document.getElementById('yt-player').classList.remove('active-player');
-        document.getElementById('bili-player').classList.remove('active-player');
-        document.getElementById('bili-player').src = "";
+        document.querySelectorAll('.video-frame').forEach(f => { f.classList.remove('active-player'); f.src=""; });
         if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
     }
 
@@ -223,7 +215,7 @@
         box.innerHTML = songList.map((s, i) => `
             <div class="song-item">
                 <div class="song-title" style="color:${i===0?'#ff00ff':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
-                <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer;">❌</button>
+                <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
             </div>
         `).join('');
     }
