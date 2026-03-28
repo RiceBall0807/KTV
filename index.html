@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GEMINI KTV</title>
+    <title>GEMINI KTV - 房號放大版</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
         :root { --bg: #121212; --panel: #1e1e1e; --primary: #00ff00; --info: #00ccff; --danger: #ff4444; }
@@ -25,17 +25,26 @@
         .btn-join { background: var(--info); color: #000; padding: 8px 15px; }
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 5px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; font-size: 0.85em; }
-        #my-id { color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; font-size: 1.2em; }
+        
+        /* 【核心修正：電腦版房號樣式】 */
+        #my-id { color: var(--primary); font-weight: bold; cursor: pointer; text-decoration: underline; font-family: monospace; transition: font-size 0.3s ease; }
+        .host-id-large { font-size: 3em; letter-spacing: 2px; text-shadow: 0 0 10px rgba(0, 255, 0, 0.5); } /* 電腦版放大 */
+        
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; font-weight: bold; display: none; z-index: 1000; }
         #volume-hint { color: #ffcc00; font-size: 0.8em; margin-top: 5px; text-align: center; display: none; }
 
         @media (max-width: 768px) {
-            body { overflow: auto; height: auto; }
+            body { overflow: auto; height: auto; padding: 5px; }
             .app-container { flex-direction: column; height: auto; gap: 10px; }
             #player-container, #volume-hint { display: none !important; }
-            .main-area { flex: none; padding: 15px; order: 1; }
-            .header-controls { flex-direction: column; gap: 10px; align-items: flex-start; }
-            .header-controls div { width: 100%; display: flex; justify-content: space-between; }
+            .main-area { flex: none; padding: 10px; order: 1; }
+            
+            /* 【核心修正：手機版還原房號大小】 */
+            .header-controls { flex-direction: column; gap: 5px; align-items: flex-start; padding: 8px; }
+            .header-controls div:first-child { width: 100%; display: flex; align-items: center; justify-content: flex-start; gap: 5px; }
+            #my-id { font-size: 1.2em; letter-spacing: normal; text-shadow: none; } /* 手機版正常 */
+            .host-id-large { font-size: 1.2em !important; } /* 強制還原 */
+            
             .side-area { order: 2; min-width: auto; height: 75vh; }
         }
     </style>
@@ -47,7 +56,10 @@
 <div class="app-container">
     <div class="main-area">
         <div class="header-controls">
-            <div><span style="color:#888; font-size:0.8em;">房號:</span> <span id="my-id" onclick="copyId()">連線中...</span></div>
+            <div>
+                <span style="color:#888; font-size:0.8em;">房號:</span> 
+                <span id="my-id" class="host-id-large" onclick="copyId()">連線中...</span>
+            </div>
             <div style="display:flex; gap:8px;">
                 <input type="text" id="peer-id" style="padding:8px; background:#333; border:1px solid #555; color:#fff; border-radius:6px; width:120px;" placeholder="輸入房號">
                 <button class="btn-join" onclick="connectToHost()">連線</button>
@@ -61,7 +73,7 @@
     </div>
 
     <div class="side-area">
-        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 點歌管理 <span id="role-tag" style="font-size:0.5em; color:#888;">(房主)</span></h3>
+        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 點歌管理 <span id="role-tag" style="font-size:0.5em; color:#888;"></span></h3>
         <div class="side-controls">
             <input type="text" id="videoUrl" placeholder="貼上網址 (YT / Bili)...">
             <div class="btn-group">
@@ -80,8 +92,8 @@
         config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }, { url: 'stun:stun1.l.google.com:19302' }] }
     });
 
-    let conn, ytPlayer;
-    let isHost = true; // 預設為房主
+    let connections = []; 
+    let ytPlayer;
     let songList = [{ id: 'QDia3e12czc', type: 'youtube' }]; 
 
     function showToast(msg) {
@@ -90,53 +102,53 @@
         setTimeout(() => { t.style.display = 'none'; }, 3000);
     }
 
-    peer.on('open', (id) => document.getElementById('my-id').innerText = id);
-
-    // 【修正：房主邏輯】
-    peer.on('connection', (c) => { 
-        isHost = true;
-        conn = c; 
+    peer.on('open', (id) => {
+        document.getElementById('my-id').innerText = id;
         document.getElementById('role-tag').innerText = "(房主模式)";
-        showToast("📢 隊友已加入！");
-        
-        setupConn();
-        
-        // 重要：當有人連進來，房主主動把「目前的歌單」發給對方，防止被對方的空歌單覆蓋
-        setTimeout(() => broadcastList(), 1000); 
     });
 
-    // 【修正：賓客邏輯】
+    peer.on('connection', (conn) => {
+        setupConnection(conn);
+        showToast("📢 隊友已加入！");
+        conn.on('open', () => broadcastList());
+    });
+
     function connectToHost() {
         const id = document.getElementById('peer-id').value.trim().toUpperCase();
         if(!id) return;
-        isHost = false; // 切換為賓客模式
         document.getElementById('role-tag').innerText = "(賓客模式)";
-        conn = peer.connect(id);
-        setupConn();
+        const conn = peer.connect(id);
+        setupConnection(conn);
     }
 
-    function setupConn() {
-        conn.on('open', () => {
-            showToast("✅ 已成功連線");
-            // 賓客連線成功時「不要」主動發送 broadcastList()，以免覆蓋房主
-        });
-
+    function setupConnection(conn) {
+        connections.push(conn);
         conn.on('data', (data) => {
             if (data.type === 'updateList') {
-                // 檢查歌單第一首是否改變，決定是否切換播放
                 const isNewFirst = songList.length === 0 || songList[0].id !== data.list[0]?.id;
                 songList = data.list;
                 updateUI();
-                
-                // 只有電腦端（通常是房主）才需要真正執行播放動作
-                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) {
-                    playCurrent();
-                }
+                if (isNewFirst && songList.length > 0 && window.innerWidth > 768) playCurrent();
+                broadcastList(); 
+            }
+        });
+        conn.on('close', () => {
+            connections = connections.filter(c => c.peer !== conn.peer);
+            showToast("⚠️ 一名隊友已離線");
+        });
+        conn.on('error', () => {
+            connections = connections.filter(c => c.peer !== conn.peer);
+        });
+    }
+
+    function broadcastList() {
+        connections.forEach(conn => {
+            if (conn && conn.open) {
+                conn.send({ type: 'updateList', list: songList });
             }
         });
     }
 
-    // --- 播放與解析邏輯 ---
     function parseUrl(url) {
         const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
         const biliRegex = /(BV[a-zA-Z0-9]{10})/;
@@ -152,22 +164,29 @@
     function handleSongAction(action) {
         const songData = parseUrl(document.getElementById('videoUrl').value.trim());
         if (!songData) return alert("無法辨識此網址");
-        
         if (action === 'add') songList.push(songData);
         else songList.splice(1, 0, songData);
-        
-        broadcastList(); // 點歌後同步給所有人
         updateUI();
         if (songList.length === 1 && window.innerWidth > 768) playCurrent();
+        broadcastList(); 
         document.getElementById('videoUrl').value = '';
     }
 
     function skipSong() {
         if (songList.length === 0) return;
         songList.shift();
-        broadcastList(); 
         updateUI();
         if (songList.length > 0) playCurrent(); else stopAllPlayers();
+        broadcastList(); 
+    }
+
+    function removeSong(index) {
+        if (index === 0) skipSong();
+        else {
+            songList.splice(index, 1);
+            updateUI();
+            broadcastList(); 
+        }
     }
 
     function playCurrent() {
@@ -193,12 +212,6 @@
         if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
     }
 
-    function broadcastList() { 
-        if (conn && conn.open) {
-            conn.send({ type: 'updateList', list: songList }); 
-        }
-    }
-
     function updateUI() {
         const box = document.getElementById('list-content');
         box.innerHTML = songList.map((song, index) => {
@@ -210,7 +223,6 @@
         }).join('');
     }
 
-    function removeSong(index) { if (index === 0) skipSong(); else { songList.splice(index, 1); broadcastList(); updateUI(); } }
     function copyId() { navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); }
 
     function onYouTubeIframeAPIReady() {
