@@ -8,18 +8,16 @@
     <style>
         :root { --bg: #0d0d0d; --panel: #1a1a1a; --primary: #00ff00; --info: #00ccff; --danger: #ff4444; }
         body { background: var(--bg); color: #fff; font-family: sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
-        .app-container { display: flex; gap: 15px; width: 100%; max-width: 1600px; height: 95vh; }
+        .app-container { display: none; gap: 15px; width: 100%; max-width: 1600px; height: 95vh; }
         
         .main-area { flex: 3; background: var(--panel); padding: 20px; border-radius: 20px; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.8); min-width: 0; }
-        
         .header-controls { display: flex; align-items: center; justify-content: space-between; background: #252525; padding: 15px; border-radius: 12px; margin-bottom: 15px; }
-        #my-id { color: var(--primary); font-weight: bold; font-family: monospace; font-size: 60px !important; line-height: 1; letter-spacing: 5px; text-shadow: 0 0 15px rgba(0,255,0,0.6); cursor: pointer; }
+        #my-id { color: var(--primary); font-weight: bold; font-family: monospace; font-size: 50px !important; line-height: 1; letter-spacing: 5px; text-shadow: 0 0 15px rgba(0,255,0,0.6); cursor: pointer; }
 
-        /* 播放器容器 */
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
-        /* 修正：針對容器內所有標籤生效，因為 YouTube 會替換掉 div */
-        #player-container > * { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; }
-        #player-container > .active-player { display: block; }
+        #player-container > * { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+        .active-player { display: block !important; }
+        iframe, #yt-instance { display: none; }
 
         .side-area { flex: 0.8; background: #111; padding: 20px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 300px; max-width: 380px; }
         .side-controls input { width: 100%; padding: 12px; background: #333; border: 1px solid #555; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; }
@@ -30,43 +28,46 @@
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
         .song-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; font-size: 0.95em; }
 
-        #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; display: none; z-index: 1000; }
+        #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; display: none; z-index: 10000; }
 
-        /* 覆蓋層：解決自動播放限制 */
-        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        #start-btn { padding: 20px 40px; font-size: 24px; background: var(--primary); color: #000; border: none; border-radius: 50px; cursor: pointer; font-weight: bold; }
+        /* 入口遮罩 */
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; }
+        .login-card { background: #1a1a1a; padding: 40px; border-radius: 20px; border: 1px solid var(--primary); text-align: center; width: 320px; }
+        .login-card input { width: 100%; padding: 15px; margin: 15px 0; background: #333; border: 1px solid #555; color: #fff; border-radius: 8px; box-sizing: border-box; text-align: center; font-size: 1.2em; }
+        .start-btn { width: 100%; padding: 15px; font-size: 18px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .host-btn { background: var(--primary); color: #000; margin-bottom: 10px; }
+        .join-btn { background: var(--info); color: #000; }
+        .start-btn:hover { transform: scale(1.05); opacity: 0.9; }
 
         @media (max-width: 1024px) {
             body { overflow: auto; height: auto; }
-            .app-container { flex-direction: column; height: auto; }
-            .main-area { flex: none; width: 100%; padding: 10px; }
-            #my-id { font-size: 40px !important; }
-            .side-area { flex: none; width: 100%; max-width: none; min-height: 500px; }
+            .app-container { flex-direction: column; height: auto; display: none; }
+            #my-id { font-size: 35px !important; }
         }
     </style>
 </head>
 <body>
 
 <div id="overlay">
-    <h1 style="color:var(--primary)">GEMINI KTV</h1>
-    <button id="start-btn" onclick="initApp()">點擊進入包廂</button>
-    <p style="color:#888; margin-top:20px;">(瀏覽器要求點擊後方可啟動音訊)</p>
+    <h1 style="color:var(--primary); margin:0; letter-spacing: 5px;">GEMINI KTV</h1>
+    <div class="login-card">
+        <button class="start-btn host-btn" onclick="startSession('host')">🎤 開啟包廂 (房主)</button>
+        <div style="margin: 20px 0; color: #555;">─── 或者 ───</div>
+        <input type="text" id="join-id" placeholder="輸入 6 位數房號">
+        <button class="start-btn join-btn" onclick="startSession('join')">🎧 加入包廂 (賓客)</button>
+    </div>
 </div>
 
 <div id="toast"></div>
 
-<div class="app-container">
+<div class="app-container" id="main-app">
     <div class="main-area">
         <div class="header-controls">
             <div><span style="color:#888; font-size: 0.8em;">ROOM:</span> <span id="my-id" onclick="copyId()">...</span></div>
-            <div style="display:flex; gap:8px;">
-                <input type="text" id="peer-id" style="width:80px; padding:10px; background:#444; color:#fff; border:none; border-radius:6px;" placeholder="房號">
-                <button onclick="connectToHost()" style="background:var(--info); border:none; padding:10px; font-weight:bold; border-radius:6px; cursor:pointer;">連線</button>
-            </div>
+            <div id="status-dot" style="width:12px; height:12px; border-radius:50%; background:gray;"></div>
         </div>
         
         <div id="player-container">
-            <div id="yt-player"></div>
             <iframe id="bili-player" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
         </div>
     </div>
@@ -74,7 +75,7 @@
     <div class="side-area">
         <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 待播清單 <span id="role-tag" style="font-size:0.5em; color:#666;"></span></h3>
         <div class="side-controls">
-            <input type="text" id="videoUrl" placeholder="貼上 YouTube 或 Bili 網址...">
+            <input type="text" id="videoUrl" placeholder="貼上網址...">
             <div class="btn-group">
                 <button style="background:var(--primary); color:#000;" onclick="handleAction('add')">點歌</button>
                 <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">插播</button>
@@ -86,44 +87,63 @@
 </div>
 
 <script>
-    let ytPlayer;
+    let ytPlayer = null;
     let isApiReady = false;
     let songList = []; 
     let isHost = true;
     let connections = [];
-    const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const peer = new Peer(shortId);
+    let peer = null;
 
-    // 初始化 App
-    function initApp() {
-        document.getElementById('overlay').style.display = 'none';
-        // 觸發音訊環境（隨便播一個靜音片刻或直接準備播放器）
-        showToast("系統已就緒");
+    // YouTube API 加載監聽
+    function onYouTubeIframeAPIReady() {
+        console.log("YouTube API 已就緒");
+        isApiReady = true;
     }
 
-    peer.on('open', (id) => {
-        document.getElementById('my-id').innerText = id;
-        document.getElementById('role-tag').innerText = "(房主模式)";
-    });
+    // 啟動包廂或加入包廂
+    function startSession(mode) {
+        document.getElementById('overlay').style.display = 'none';
+        document.getElementById('main-app').style.display = 'flex';
+        
+        const shortId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        
+        if (mode === 'host') {
+            isHost = true;
+            initPeer(shortId);
+            document.getElementById('role-tag').innerText = "(房主模式)";
+        } else {
+            isHost = false;
+            const targetId = document.getElementById('join-id').value.trim().toUpperCase();
+            if(!targetId) return location.reload();
+            initPeer(shortId);
+            setTimeout(() => connectToHost(targetId), 1000);
+            document.getElementById('role-tag').innerText = "(賓客模式)";
+        }
+    }
 
-    peer.on('connection', (conn) => {
-        isHost = true;
-        setupConn(conn);
-        showToast("📢 賓客已連線");
-    });
+    function initPeer(id) {
+        peer = new Peer(id);
+        peer.on('open', (myId) => {
+            document.getElementById('my-id').innerText = myId;
+            document.getElementById('status-dot').style.background = 'var(--primary)';
+        });
 
-    function connectToHost() {
-        const id = document.getElementById('peer-id').value.trim().toUpperCase();
-        if(!id) return;
-        isHost = false;
-        document.getElementById('role-tag').innerText = "(賓客模式)";
+        peer.on('connection', (conn) => {
+            setupConn(conn);
+            showToast("📢 賓客已進入包廂");
+        });
+    }
+
+    function connectToHost(id) {
         const conn = peer.connect(id);
         setupConn(conn);
     }
 
     function setupConn(conn) {
         connections.push(conn);
-        conn.on('open', () => { if (isHost) conn.send({ type: 'sync', list: songList }); });
+        conn.on('open', () => {
+            if (isHost) conn.send({ type: 'sync', list: songList });
+        });
         conn.on('data', (data) => {
             if (data.type === 'cmd') {
                 if (data.action === 'add') addSong(data.song, false);
@@ -133,7 +153,6 @@
             } else if (data.type === 'sync') {
                 songList = data.list;
                 updateUI();
-                // 賓客不需要 playCurrent，因為音樂由房主同步（或你可以設計房主播、賓客同步聽）
             }
         });
     }
@@ -148,23 +167,12 @@
             try {
                 const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${songData.id}`);
                 const json = await res.json();
-                songData.title = json.title || songData.id;
-                updateUI(); broadcast();
+                if(json.title) {
+                    songList.find(s => s.id === songData.id).title = json.title;
+                    updateUI(); broadcast();
+                }
             } catch (e) {}
         }
-    }
-
-    function handleAction(action) {
-        const url = document.getElementById('videoUrl').value.trim();
-        const songData = parseUrl(url);
-        if (!songData) return alert("網址格式錯誤");
-
-        if (isHost) {
-            addSong(songData, action === 'insert');
-        } else if (connections[0]?.open) {
-            connections[0].send({ type: 'cmd', action: action, song: songData });
-        }
-        document.getElementById('videoUrl').value = '';
     }
 
     function playCurrent() {
@@ -173,32 +181,59 @@
         stopAll();
 
         if (cur.type === 'youtube') {
-            const ytElem = document.querySelector('iframe#yt-player') || document.getElementById('yt-player');
-            ytElem.classList.add('active-player');
-            
-            if (isApiReady && ytPlayer && ytPlayer.loadVideoById) {
-                ytPlayer.loadVideoById(cur.id);
-            } else {
-                setTimeout(playCurrent, 1000); 
-            }
+            if (!isApiReady) return setTimeout(playCurrent, 1000);
+
+            // 動態建立新的 div 以供 YouTube API 替換
+            const container = document.getElementById('player-container');
+            const ytDiv = document.createElement('div');
+            ytDiv.id = 'yt-instance';
+            ytDiv.classList.add('active-player');
+            container.appendChild(ytDiv);
+
+            ytPlayer = new YT.Player('yt-instance', {
+                height: '100%',
+                width: '100%',
+                videoId: cur.id,
+                playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0, 'playsinline': 1 },
+                events: {
+                    'onReady': (e) => e.target.playVideo(),
+                    'onStateChange': (e) => { if (e.data === YT.PlayerState.ENDED) skipSong(); },
+                    'onError': () => skipSong()
+                }
+            });
         } else {
             const b = document.getElementById('bili-player');
-            b.src = `https://player.bilibili.com/player.html?bvid=${cur.id}&autoplay=1&muted=0&page=1`;
+            b.src = `https://player.bilibili.com/player.html?bvid=${cur.id}&autoplay=1&muted=0&danmaku=0`;
             b.classList.add('active-player');
         }
     }
 
     function stopAll() {
-        const ytElem = document.querySelector('iframe#yt-player') || document.getElementById('yt-player');
-        const biliElem = document.getElementById('bili-player');
-        
-        ytElem.classList.remove('active-player');
-        biliElem.classList.remove('active-player');
-        biliElem.src = "";
-
-        if (ytPlayer && ytPlayer.stopVideo) {
-            try { ytPlayer.stopVideo(); } catch(e) {}
+        if (ytPlayer && ytPlayer.destroy) {
+            ytPlayer.destroy();
+            ytPlayer = null;
         }
+        // 清理所有動態生成的 YT 元素
+        const oldYt = document.getElementById('yt-instance');
+        if (oldYt) oldYt.remove();
+
+        const b = document.getElementById('bili-player');
+        b.src = "";
+        b.classList.remove('active-player');
+    }
+
+    function handleAction(action) {
+        const url = document.getElementById('videoUrl').value.trim();
+        const songData = parseUrl(url);
+        if (!songData) return alert("請輸入正確的 YouTube 或 Bilibili 網址");
+
+        if (isHost) {
+            addSong(songData, action === 'insert');
+        } else if (connections[0]?.open) {
+            connections[0].send({ type: 'cmd', action: action, song: songData });
+            showToast("✅ 已送出點歌請求");
+        }
+        document.getElementById('videoUrl').value = '';
     }
 
     function skipSong() {
@@ -229,8 +264,8 @@
     function parseUrl(url) {
         const yt = url.match(/(?:youtube\.com\/.*[?&]v=|youtu\.be\/)([^"&?\/\s]{11})/);
         const bili = url.match(/(BV[a-zA-Z0-9]{10})/);
-        if (yt) return { id: yt[1], type: 'youtube', title: yt[1] };
-        if (bili) return { id: bili[1], type: 'bilibili', title: 'Bili: ' + bili[1] };
+        if (yt) return { id: yt[1], type: 'youtube', title: "YouTube 加載中..." };
+        if (bili) return { id: bili[1], type: 'bilibili', title: 'Bilibili: ' + bili[1] };
         return null;
     }
 
@@ -238,26 +273,21 @@
         const box = document.getElementById('list-content');
         box.innerHTML = songList.map((s, i) => `
             <div class="song-item">
-                <div class="song-title" style="color:${i===0?'#ff00ff':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
+                <div class="song-title" style="color:${i===0?'var(--primary)':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
                 <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
             </div>
         `).join('');
     }
 
-    function copyId() { navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); }
-    function showToast(msg) { const t = document.getElementById('toast'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 3000); }
-
-    // YouTube API Ready
-    function onYouTubeIframeAPIReady() {
-        ytPlayer = new YT.Player('yt-player', {
-            height: '100%',
-            width: '100%',
-            playerVars: { 'autoplay': 1, 'playsinline': 1 },
-            events: {
-                'onReady': () => { isApiReady = true; },
-                'onStateChange': (e) => { if (e.data === 0) skipSong(); }
-            }
-        });
+    function copyId() { 
+        navigator.clipboard.writeText(document.getElementById('my-id').innerText).then(() => showToast("📋 房號已複製")); 
+    }
+    
+    function showToast(msg) { 
+        const t = document.getElementById('toast'); 
+        t.innerText = msg; 
+        t.style.display = 'block'; 
+        setTimeout(() => t.style.display = 'none', 3000); 
     }
 </script>
 <script src="https://www.youtube.com/iframe_api"></script>
