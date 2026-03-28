@@ -175,28 +175,61 @@
             }
         });
 
-        peer.on('open', (myId) => {
-            document.getElementById('my-id').innerText = myId;
-            document.getElementById('status-dot').style.background = 'var(--primary)';
+        // peer.on('open', (myId) => {
+        //     document.getElementById('my-id').innerText = myId;
+        //     document.getElementById('status-dot').style.background = 'var(--primary)';
 
-            // 如果是房主，產生 QR Code
+        //     // 如果是房主，產生 QR Code
+        //     if (isHost) {
+        //         const qrBox = document.getElementById('qrcode-container');
+        //         qrBox.style.display = 'block';
+        //         document.getElementById('qrcode').innerHTML = ""; // 清空舊的
+                
+        //         // 構建帶參數的網址
+        //         const joinUrl = window.location.origin + window.location.pathname + "?room=" + myId;
+                
+        //         new QRCode(document.getElementById("qrcode"), {
+        //             text: joinUrl,
+        //             width: 100,
+        //             height: 100,
+        //             colorDark : "#000000",
+        //             colorLight : "#ffffff",
+        //             correctLevel : QRCode.CorrectLevel.H
+        //         });
+        //     }
+        // });
+
+        peer.on('open', (myId) => {
+            // 1. 只有房主才在畫面上顯示「自己的 ID」
             if (isHost) {
+                document.getElementById('my-id').innerText = myId;
+                
+                // 房主才產生 QR Code
                 const qrBox = document.getElementById('qrcode-container');
                 qrBox.style.display = 'block';
-                document.getElementById('qrcode').innerHTML = ""; // 清空舊的
-                
-                // 構建帶參數的網址
+                const qrElement = document.getElementById('qrcode');
+                qrElement.innerHTML = ""; 
                 const joinUrl = window.location.origin + window.location.pathname + "?room=" + myId;
                 
-                new QRCode(document.getElementById("qrcode"), {
+                new QRCode(qrElement, {
                     text: joinUrl,
-                    width: 100,
-                    height: 100,
+                    width: 110,
+                    height: 110,
                     colorDark : "#000000",
                     colorLight : "#ffffff",
                     correctLevel : QRCode.CorrectLevel.H
                 });
+            } else {
+                // 2. 賓客模式：維持顯示「輸入的房號」
+                // 抓取剛才在 startSession 輸入框裡的目標房號
+                const targetId = document.getElementById('join-id').value.trim().toUpperCase();
+                if (targetId) {
+                    document.getElementById('my-id').innerText = targetId;
+                }
             }
+            
+            // 連線燈號變綠色
+            document.getElementById('status-dot').style.background = 'var(--primary)';
         });
         peer.on('connection', (conn) => {
             setupConn(conn);
