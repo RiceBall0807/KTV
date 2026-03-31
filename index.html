@@ -25,6 +25,23 @@
         .side-controls input { width: 100%; padding: 12px; background: #333; border: 1px solid #555; color: #fff; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; }
         .btn-group { display: flex; gap: 8px; }
         .btn-group button { flex: 1; padding: 12px 5px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; }
+
+        /* 控制展開後的樣式 */
+        .fav-open {
+            max-height: 400px !important; /* 給予足夠大的高度 */
+            border: 1px solid #444;
+            border-top: none;
+        }
+
+        /* 針對最愛歌曲的小優化 */
+        .fav-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #333;
+        }
+        .fav-item:last-child { border-bottom: none; }
         
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 10px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -43,6 +60,8 @@
 
         /* 隱藏專用 */
         .hidden { display: none !important; }
+        /* 預設隱藏最愛區域 */
+        .fav-section { display: none; }
 
         /* 針對賓客模式的排版優化 */
         .guest-view .main-area { flex: 0; padding: 10px; min-height: auto; }
@@ -50,6 +69,7 @@
         .guest-view #my-id { font-size: 24px !important; color: #888; } /* 房號縮小 */
         .guest-view .app-container { flex-direction: column; height: auto; overflow: auto; }
         .guest-view .side-area { max-width: none; flex: 1; }
+        .guest-view .fav-section { display: block; }
 
         @media (max-width: 1024px) {
             body { overflow: auto; height: auto; }
@@ -101,6 +121,16 @@
                 <button style="background:var(--primary); color:#000;" onclick="handleAction('add')">點歌</button>
                 <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">插播</button>
                 <button style="background:var(--danger); color:#fff;" onclick="skipSong()">切歌</button>
+            </div>
+        </div>
+        <div class="fav-section" style="margin-bottom: 15px;">
+            <button onclick="toggleFav()" style="width:100%; background:#333; color:#ffcc00; border:1px solid #444; padding:10px; border-radius:8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                <span>⭐ 我的最愛歌曲</span>
+                <span id="fav-arrow">▼</span>
+            </button>
+            <div id="favorite-panel" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; background: #1a1a1a; border-radius: 0 0 8px 8px;">
+                <div id="favorite-content" style="padding: 10px; max-height: 300px; overflow-y: auto;">
+                    </div>
             </div>
         </div>
         <div id="list-content"></div>
@@ -406,6 +436,89 @@
         }
     }
 
+    // 儲存最愛清單到 localStorage
+    function saveFavorite(songData) {
+        // 1. 先從本地取出舊的最愛 (如果沒有就設為空陣列)
+        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        
+        // 2. 檢查是否已經重複
+        if (favs.some(f => f.id === songData.id)) {
+            showToast("✨ 已經在最愛清單中囉！");
+            return;
+        }
+        
+        // 3. 加入新歌並存回
+        favs.push(songData);
+        localStorage.setItem('ktv_favs', JSON.stringify(favs));
+        updateFavUI();
+        showToast("❤️ 已加入最愛");
+    }
+
+    // 更新最愛清單的 UI
+    function updateFavUI() {
+        const favBox = document.getElementById('favorite-content');
+        const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        
+        if (favs.length === 0) {
+            favBox.innerHTML = '<div style="color:#666; text-align:center; padding:20px;">尚無收藏歌曲</div>';
+            return;
+        }
+        
+        favBox.innerHTML = favs.map((s, i) => `
+            <div class="fav-item">
+                <div style="flex:1; cursor:pointer; font-size:14px;" onclick="quickAddFav(${i})">
+                    ${s.title}
+                </div>
+                <button onclick="removeFav(${i})" style="background:none; border:none; color:#ff4444; cursor:pointer; padding-left:10px;">🗑️</button>
+            </div>
+        `).join('');
+    }
+
+    // 點擊最愛歌曲直接點播
+    function quickAddFav(index) {
+        const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        const song = favs[index];
+        
+        if (isHost) {
+            addSong(song, false);
+        } else {
+            // 抓取當前有效的連線
+            const activeConn = connections.find(c => c.open);
+            if (activeConn) {
+                activeConn.send({ type: 'cmd', action: 'add', song: song });
+                showToast("🚀 已從最愛點歌");
+            } else {
+                alert("與電視連線中斷");
+            }
+        }
+    }
+
+    // 移除最愛
+    function removeFav(index) {
+        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        favs.splice(index, 1);
+        localStorage.setItem('ktv_favs', JSON.stringify(favs));
+        updateFavUI();
+    }
+
+    // 切換最愛面板展開/收合
+    function toggleFav() {
+        const panel = document.getElementById('favorite-panel');
+        const arrow = document.getElementById('fav-arrow');
+        
+        if (panel.classList.contains('fav-open')) {
+            panel.classList.remove('fav-open');
+            arrow.innerText = "▼";
+        } else {
+            panel.classList.add('fav-open');
+            arrow.innerText = "▲";
+            updateFavUI(); // 展開時順便更新內容
+        }
+    }
+
+    // 在網頁開啟時自動載入
+    window.addEventListener('load', updateFavUI);
+
     function broadcast() {
         if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'sync', list: songList }); });
     }
@@ -423,7 +536,10 @@
         box.innerHTML = songList.map((s, i) => `
             <div class="song-item">
                 <div class="song-title" style="color:${i===0?'var(--primary)':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
-                <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
+                <div style="display:flex; gap:10px;">
+                    <button onclick='saveFavorite(${JSON.stringify(s)})' style="background:none; border:none; cursor:pointer;">❤️</button>
+                    <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
+                </div>
             </div>
         `).join('');
     }
