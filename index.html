@@ -26,22 +26,28 @@
         .btn-group { display: flex; gap: 8px; }
         .btn-group button { flex: 1; padding: 12px 5px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; }
 
-        /* 控制展開後的樣式 */
-        .fav-open {
-            max-height: 400px !important; /* 給予足夠大的高度 */
-            border: 1px solid #444;
-            border-top: none;
+        /* 讓房主和賓客都看得到最愛，方便測試 */
+        .fav-section { 
+            display: block; 
+            margin-top: 20px; 
         }
 
-        /* 針對最愛歌曲的小優化 */
-        .fav-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #333;
+        /* 展開後的內容容器 */
+        #favorite-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s cubic-bezier(0, 1, 0, 1); /* 平滑展開 */
+            background: #1a1a1a;
+            border-radius: 0 0 8px 8px;
         }
-        .fav-item:last-child { border-bottom: none; }
+
+        /* 當有 fav-open 類別時展開 */
+        #favorite-panel.fav-open {
+            max-height: 500px;
+            border: 1px solid #444;
+            border-top: none;
+            transition: max-height 0.4s ease-in;
+        }
         
         #list-content { flex-grow: 1; overflow-y: auto; margin-top: 10px; }
         .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
@@ -60,8 +66,6 @@
 
         /* 隱藏專用 */
         .hidden { display: none !important; }
-        /* 預設隱藏最愛區域 */
-        .fav-section { display: none; }
 
         /* 針對賓客模式的排版優化 */
         .guest-view .main-area { flex: 0; padding: 10px; min-height: auto; }
@@ -69,7 +73,6 @@
         .guest-view #my-id { font-size: 24px !important; color: #888; } /* 房號縮小 */
         .guest-view .app-container { flex-direction: column; height: auto; overflow: auto; }
         .guest-view .side-area { max-width: none; flex: 1; }
-        .guest-view .fav-section { display: block; }
 
         @media (max-width: 1024px) {
             body { overflow: auto; height: auto; }
@@ -122,7 +125,8 @@
                 <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">插播</button>
                 <button style="background:var(--danger); color:#fff;" onclick="skipSong()">切歌</button>
             </div>
-        </div>
+        </div>        
+        <div id="list-content"></div>
         <div class="fav-section" style="margin-bottom: 15px;">
             <button onclick="toggleFav()" style="width:100%; background:#333; color:#ffcc00; border:1px solid #444; padding:10px; border-radius:8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
                 <span>⭐ 我的最愛歌曲</span>
@@ -133,7 +137,6 @@
                     </div>
             </div>
         </div>
-        <div id="list-content"></div>
     </div>
 </div>
 
