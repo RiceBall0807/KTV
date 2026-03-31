@@ -115,9 +115,14 @@
             <iframe id="bili-player" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
         </div>
     </div>
-
     <div class="side-area">
-        <h3 style="margin:0 0 15px 0; color: var(--primary);">📜 待播清單 <span id="role-tag" style="font-size:0.5em; color:#666;"></span></h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 id="list-title" style="margin:0; color: var(--primary);">📜 待播清單</h3>
+            <button id="tab-switch-btn" onclick="toggleListMode()" style="background: #333; color: #ffcc00; border: 1px solid #444; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8em; font-weight: bold;">
+                ⭐ 查看最愛
+            </button>
+        </div>
+
         <div class="side-controls">
             <input type="text" id="videoUrl" placeholder="貼上網址...">
             <div class="btn-group">
@@ -125,18 +130,9 @@
                 <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">插播</button>
                 <button style="background:var(--danger); color:#fff;" onclick="skipSong()">切歌</button>
             </div>
-        </div>        
-        <div id="list-content"></div>
-        <div class="fav-section" style="margin-bottom: 15px;">
-            <button onclick="toggleFav()" style="width:100%; background:#333; color:#ffcc00; border:1px solid #444; padding:10px; border-radius:8px; cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
-                <span>⭐ 我的最愛歌曲</span>
-                <span id="fav-arrow">▼</span>
-            </button>
-            <div id="favorite-panel" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; background: #1a1a1a; border-radius: 0 0 8px 8px;">
-                <div id="favorite-content" style="padding: 10px; max-height: 300px; overflow-y: auto;">
-                    </div>
-            </div>
         </div>
+
+        <div id="list-content"></div>
     </div>
 </div>
 
@@ -147,7 +143,8 @@
     let isHost = true;
     let connections = [];
     let peer = null;
-    
+    let currentMode = 'queue'; // 'queue' 或 'fav'
+
     // YouTube API 加載監聽
     function onYouTubeIframeAPIReady() {
         console.log("YouTube API 已就緒");
@@ -249,6 +246,7 @@
             console.error("PeerJS 發生錯誤:", err.type);
             if(err.type === 'peer-unavailable') {
                 alert("找不到該房號，請檢查輸入是否正確");
+                window.location.href = window.location.origin + window.location.pathname; // 跳回首頁並清空參數
             }
         });
     }
@@ -273,7 +271,14 @@
         });
 
         conn.on('data', (data) => {
-            // ... 原有的處理邏輯保持不變 ...
+            if (data.type === 'sync') {
+                songList = data.list;
+                // 如果當前是在「待播清單」模式，才自動刷新 UI
+                // 如果在「最愛」模式，靜默更新資料即可，不跳轉畫面
+                if (currentMode === 'queue') {
+                    updateUI();
+                }
+            }
             if (data.type === 'cmd') {
                 if (data.action === 'add') addSong(data.song, false);
                 else if (data.action === 'insert') addSong(data.song, true);
@@ -504,19 +509,22 @@
         updateFavUI();
     }
 
-    // 切換最愛面板展開/收合
-    function toggleFav() {
-        const panel = document.getElementById('favorite-panel');
-        const arrow = document.getElementById('fav-arrow');
+    function toggleListMode() {
+        const btn = document.getElementById('tab-switch-btn');
+        const title = document.getElementById('list-title');
         
-        if (panel.classList.contains('fav-open')) {
-            panel.classList.remove('fav-open');
-            arrow.innerText = "▼";
+        if (currentMode === 'queue') {
+            currentMode = 'fav';
+            btn.innerText = "📜 返回待播";
+            title.innerText = "⭐ 我的最愛";
+            title.style.color = "#ffcc00";
         } else {
-            panel.classList.add('fav-open');
-            arrow.innerText = "▲";
-            updateFavUI(); // 展開時順便更新內容
+            currentMode = 'queue';
+            btn.innerText = "⭐ 查看最愛";
+            title.innerText = "📜 待播清單";
+            title.style.color = "var(--primary)";
         }
+        updateUI(); // 統一由 updateUI 負責渲染內容
     }
 
     // 在網頁開啟時自動載入
@@ -536,15 +544,37 @@
 
     function updateUI() {
         const box = document.getElementById('list-content');
-        box.innerHTML = songList.map((s, i) => `
-            <div class="song-item">
-                <div class="song-title" style="color:${i===0?'var(--primary)':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
-                <div style="display:flex; gap:10px;">
-                    <button onclick='saveFavorite(${JSON.stringify(s)})' style="background:none; border:none; cursor:pointer;">❤️</button>
-                    <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
+        
+        if (currentMode === 'queue') {
+            // --- 渲染待播清單 ---
+            box.innerHTML = songList.map((s, i) => `
+                <div class="song-item">
+                    <div class="song-title" style="color:${i===0?'var(--primary)':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick='saveFavorite(${JSON.stringify(s)})' title="加入最愛" style="background:none; border:none; cursor:pointer; font-size:18px;">❤️</button>
+                        <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
+            if (songList.length === 0) box.innerHTML = '<div style="color:#444; text-align:center; padding:20px;">清單空空的，快去點歌吧！</div>';
+
+        } else {
+            // --- 渲染最愛清單 ---
+            const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+            if (favs.length === 0) {
+                box.innerHTML = '<div style="color:#666; text-align:center; padding:20px;">尚未收藏任何歌曲</div>';
+                return;
+            }
+            
+            box.innerHTML = favs.map((s, i) => `
+                <div class="song-item">
+                    <div class="song-title" style="cursor:pointer;" onclick="quickAddFav(${i})">⭐ ${s.title}</div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="removeFav(${i})" title="刪除最愛" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px;">🗑️</button>
+                    </div>
+                </div>
+            `).join('');
+        }
     }
 
     function copyId() { 
