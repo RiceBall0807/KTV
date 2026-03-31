@@ -122,16 +122,21 @@
 
 <div class="app-container" id="main-app">
     <div class="main-area">
+        <div class="header-controls" style="min-height: 50px; padding: 10px 20px;">
+            <div class="header-left" style="display: flex; align-items: center; gap: 15px;">
+                <span style="color:#888; font-size: 0.8em; font-weight: bold;">ROOM CODE:</span> 
+                <span id="my-id" onclick="copyId()" title="點擊複製房號">...</span>
+            </div>
+            <div class="header-right">
+                <span id="role-tag" style="color: #666; font-size: 0.8em;">(電視房主)</span>
+                <div id="status-dot" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--primary); margin-left: 10px;"></div>
+            </div>
+        </div>
         <div id="player-container">
             <iframe id="bili-player" allow="autoplay; fullscreen" referrerpolicy="no-referrer"></iframe>
         </div>
     </div>
     <div class="side-area">
-        <div style="background: #222; padding: 12px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #333; text-align: center;">
-            <div style="color:#888; font-size: 11px; margin-bottom: 3px; letter-spacing: 1px;">ROOM CODE</div>
-            <div id="my-id" onclick="copyId()" title="點擊複製房號">...</div>
-            <div id="role-tag" style="color: #555; font-size: 11px; margin-top: 5px;">(電視房主)</div>
-        </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h3 id="list-title" style="margin:0; color: var(--primary);">📜 待播清單</h3>
             <button id="tab-switch-btn" onclick="toggleListMode()" style="background: #333; color: #ffcc00; border: 1px solid #444; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8em; font-weight: bold;">
@@ -238,8 +243,8 @@
                 
                 new QRCode(qrElement, {
                     text: joinUrl,
-                    width: 120,
-                    height: 120,
+                    width: 150,
+                    height: 150,
                     colorDark : "#000000",
                     colorLight : "#ffffff",
                     correctLevel : QRCode.CorrectLevel.H
