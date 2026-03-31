@@ -129,7 +129,6 @@
             </div>
             <div class="header-right">
                 <span id="role-tag" style="color: #666; font-size: 0.8em;">(電視房主)</span>
-                <div id="status-dot" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--primary); margin-left: 10px;"></div>
             </div>
         </div>
         <div id="player-container">
@@ -186,7 +185,7 @@
         if (mode === 'host') {
             isHost = true;
             initPeer(shortId);
-            document.getElementById('role-tag').innerText = "(電視房主)";
+            document.getElementById('role-tag').innerText = "(房主模式)";
             
             // 房主預設點歌
             const defaultUrl = "https://youtu.be/dQw4w9WgXcQ";
@@ -207,7 +206,7 @@
 
             initPeer(shortId);
             setTimeout(() => connectToHost(targetId), 1000);
-            document.getElementById('role-tag').innerText = "(已連線至房號: " + targetId + ")";
+            document.getElementById('role-tag').innerText = "(賓客模式)";
             
             // 賓客模式下，將原本顯示自己房號的地方改顯示「連線目標」
             document.getElementById('my-id').innerText = targetId;
