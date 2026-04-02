@@ -225,6 +225,7 @@
             if (isHost) {
                 document.getElementById('my-id').innerText = myId;
                 loadSavedQueue();
+                updateUI();
                 
                 // 房主才產生 QR Code
                 const qrBox = document.getElementById('qrcode-container');
