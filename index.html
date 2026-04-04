@@ -7,6 +7,7 @@
     <title>GEMINI KTV</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
         :root { --bg: #0d0d0d; --panel: #1a1a1a; --primary: #00ff00; --info: #00ccff; --danger: #ff4444; }
         body { background: var(--bg); color: #fff; font-family: sans-serif; margin: 0; padding: 10px; height: 100vh; display: flex; justify-content: center; overflow: hidden; }
@@ -79,7 +80,27 @@
         .song-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; font-size: 0.95em; }
 
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; display: none; z-index: 10000; }
+        
+        /* 拖動時的影子樣式 */
+        .sortable-ghost {
+            opacity: 0.4;
+            background: var(--primary) !important;
+        }
 
+        /* 拖動中的實體樣式 */
+        .sortable-chosen {
+            background: #333 !important;
+        }
+
+        .drag-handle {
+            padding: 10px;
+            font-size: 20px;
+            touch-action: none; /* 防止手機瀏覽器預設的捲動干擾拖拽 */
+        }
+
+        .song-item {
+            touch-action: pan-y; /* 允許垂直捲動頁面，但不干擾拖拽 */
+        }
         /* 入口遮罩 */
         #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; }
         .login-card { background: #1a1a1a; padding: 40px; border-radius: 20px; border: 1px solid var(--primary); text-align: center; width: 320px; }
@@ -464,6 +485,10 @@
         }
     }
 
+    function saveFavoriteFromList(index) {
+        saveFavorite(songList[index]);
+    }
+
     // 儲存最愛清單到 localStorage
     function saveFavorite(songData) {
         // 1. 先從本地取出舊的最愛 (如果沒有就設為空陣列)
@@ -526,7 +551,8 @@
         let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
         favs.splice(index, 1);
         localStorage.setItem('ktv_favs', JSON.stringify(favs));
-        updateFavUI();
+        //updateFavUI();
+        updateUI();
     }
 
     function toggleListMode() {
@@ -566,19 +592,25 @@
         const box = document.getElementById('list-content');
         
         if (currentMode === 'queue') {
-            // --- 渲染待播清單 ---
             box.innerHTML = songList.map((s, i) => `
-                <div class="song-item">
-                    <div class="song-title" style="color:${i===0?'var(--primary)':'#fff'}">${i===0?'▶️':i+1+'.'} ${s.title}</div>
-                    <div style="display:flex; gap:10px;">
-                        <button onclick='saveFavorite(${JSON.stringify(s)})' title="加入最愛" style="background:none; border:none; cursor:pointer; font-size:18px;">❤️</button>
-                        <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:18px;">×</button>
+                <div class="song-item ${i === 0 ? 'no-drag' : 'draggable'}" data-index="${i}">
+                    <div class="song-title" style="color:${i === 0 ? 'var(--primary)' : '#fff'}">
+                        ${i === 0 ? '▶️' : i + 1 + '.'} ${s.title}
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        ${i !== 0 ? '<span class="drag-handle" style="cursor:grab; color:#666;">☰</span>' : ''}
+                        <button onclick="saveFavoriteFromList(${i})" style="background:none; border:none; cursor:pointer;">❤️</button>
+                        <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer;">×</button>
                     </div>
                 </div>
             `).join('');
-            if (songList.length === 0) box.innerHTML = '<div style="color:#444; text-align:center; padding:20px;">清單空空的，快去點歌吧！</div>';
 
+            // 重新初始化拖拽功能
+            initSortable();
+
+            if (songList.length === 0) box.innerHTML = '<div style="color:#444; text-align:center; padding:20px;">清單空空的...</div>';
         } else {
+            // 最愛清單渲染邏輯 (維持原樣或同樣加入拖拽)
             // --- 渲染最愛清單 ---
             const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
             if (favs.length === 0) {
@@ -595,6 +627,42 @@
                 </div>
             `).join('');
         }
+    }
+    function moveSong(from, toOffset) {
+        if (!isHost) return; // 只有房主能決定最終順序
+        
+        const targetIndex = from + toOffset;
+        const item = songList.splice(from, 1)[0];
+        songList.splice(targetIndex, 0, item);
+        
+        updateUI();
+        broadcast(); // 同步給所有賓客
+    }
+
+    function initSortable() {
+        const el = document.getElementById('list-content');
+        
+        // 銷毀舊的實例防止重複綁定
+        if (window.sortableInstance) window.sortableInstance.destroy();
+
+        window.sortableInstance = Sortable.create(el, {
+            animation: 150,
+            handle: '.drag-handle', // 只有按住 ☰ 才能拖動，避免誤觸按鈕
+            filter: '.no-drag',    // 禁止拖動正在播放的歌曲
+            onEnd: function (evt) {
+                const oldIndex = evt.oldIndex;
+                const newIndex = evt.newIndex;
+
+                if (oldIndex === newIndex) return;
+                if (newIndex === 0) { // 防止把歌移到正在播放的位置
+                    updateUI(); // 強制刷回原狀
+                    return;
+                }
+
+                // 執行移動邏輯
+                moveSong(oldIndex, newIndex - oldIndex);
+            },
+        });
     }
 
     function copyId() { 
