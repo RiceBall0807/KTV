@@ -498,8 +498,8 @@
         // 3. 加入新歌並存回
         favs.push(songData);
         localStorage.setItem('ktv_favs', JSON.stringify(favs));
-        updateFavUI();
         showToast("❤️ 已加入最愛");
+        updateFavUI();
     }
 
     // 更新最愛清單的 UI
@@ -617,13 +617,19 @@
             }
             
             box.innerHTML = favs.map((s, i) => `
-                <div class="song-item">
-                    <div class="song-title" style="cursor:pointer;" onclick="quickAddFav(${i})">⭐ ${s.title}</div>
-                    <div style="display:flex; gap:10px;">
+                <div class="song-item draggable" data-index="${i}">
+                    <div class="song-title" style="cursor:pointer;" onclick="quickAddFav(${i})">
+                        ⭐ ${s.title}
+                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <span class="drag-handle" style="cursor:grab; color:#666;">☰</span>
                         <button onclick="removeFav(${i})" title="刪除最愛" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px;">🗑️</button>
                     </div>
                 </div>
             `).join('');
+
+            // 重要：渲染完 HTML 後，也要針對最愛清單初始化 Sortable
+            initSortable();
         }
     }
     function moveSong(from, toOffset) {
@@ -637,28 +643,46 @@
         broadcast(); // 同步給所有賓客
     }
 
+    function moveFavorite(from, to) {
+        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        
+        // 移動陣列元素
+        const item = favs.splice(from, 1)[0];
+        favs.splice(to, 0, item);
+        
+        // 存回 localStorage
+        localStorage.setItem('ktv_favs', JSON.stringify(favs));
+        
+        // 重新渲染畫面以確保 data-index 正確
+        updateUI();
+        showToast("📋 最愛順序已更新");
+    }
+    
     function initSortable() {
         const el = document.getElementById('list-content');
         
-        // 銷毀舊的實例防止重複綁定
         if (window.sortableInstance) window.sortableInstance.destroy();
 
         window.sortableInstance = Sortable.create(el, {
             animation: 150,
-            handle: '.drag-handle', // 只有按住 ☰ 才能拖動，避免誤觸按鈕
-            filter: '.no-drag',    // 禁止拖動正在播放的歌曲
+            handle: '.drag-handle',
+            filter: '.no-drag',
             onEnd: function (evt) {
                 const oldIndex = evt.oldIndex;
                 const newIndex = evt.newIndex;
-
                 if (oldIndex === newIndex) return;
-                if (newIndex === 0) { // 防止把歌移到正在播放的位置
-                    updateUI(); // 強制刷回原狀
-                    return;
-                }
 
-                // 執行移動邏輯
-                moveSong(oldIndex, newIndex - oldIndex);
+                if (currentMode === 'queue') {
+                    // 待播清單模式：禁止移到第 0 位（正在播放）
+                    if (newIndex === 0) { 
+                        updateUI(); 
+                        return;
+                    }
+                    moveSong(oldIndex, newIndex - oldIndex);
+                } else {
+                    // 最愛清單模式：直接移動並更新 localStorage
+                    moveFavorite(oldIndex, newIndex);
+                }
             },
         });
     }
