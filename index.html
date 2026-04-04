@@ -207,14 +207,6 @@
             isHost = true;
             initPeer(shortId);
             document.getElementById('role-tag').innerText = "(房主模式)";
-            
-            // 房主預設點歌
-            const defaultUrl = "https://youtu.be/dQw4w9WgXcQ";
-            const defaultSong = parseUrl(defaultUrl);
-            if (defaultSong) {
-                defaultSong.title = "Rick Astley - Never Gonna Give You Up";
-                addSong(defaultSong, false);
-            }
         } else {
             isHost = false;
             const targetId = document.getElementById('join-id').value.trim().toUpperCase();
@@ -253,6 +245,9 @@
             // 1. 只有房主才在畫面上顯示「自己的 ID」
             if (isHost) {
                 document.getElementById('my-id').innerText = myId;
+                loadSavedQueue();
+                updateUI();
+                playCurrent();
                 
                 // 房主才產生 QR Code
                 const qrBox = document.getElementById('qrcode-container');
@@ -577,7 +572,10 @@
     window.addEventListener('load', updateFavUI);
 
     function broadcast() {
-        if (isHost) connections.forEach(c => { if (c.open) c.send({ type: 'sync', list: songList }); });
+        if (isHost) {
+            localStorage.setItem('ktv_queue_backup', JSON.stringify(songList));
+            connections.forEach(c => { if (c.open) c.send({ type: 'sync', list: songList }); });
+        }
     }
 
     function parseUrl(url) {
@@ -663,6 +661,41 @@
                 moveSong(oldIndex, newIndex - oldIndex);
             },
         });
+    }
+
+    function addDefaultSong() {
+        const defaultSong = {
+            id: "dQw4w9WgXcQ",
+            type: 'youtube',
+            title: "Rick Astley - Never Gonna Give You Up"
+        };
+        songList = [defaultSong];
+    }
+
+    function loadSavedQueue() {
+        if (!isHost) return;
+        const saved = localStorage.getItem('ktv_queue_backup');
+        
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                // 檢查解析出來的是不是有內容的陣列
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    songList = parsed;
+                    console.log("📋 已從本地儲存恢復待播清單");
+                } else {
+                    // 如果存檔是空的陣列，則給預設歌曲
+                    addDefaultSong();
+                }
+            } catch (e) {
+                console.error("恢復清單失敗，改用預設歌曲", e);
+                addDefaultSong();
+            }
+        } else {
+            // 完全沒有 localStorage 紀錄時（第一次點開）
+            addDefaultSong();
+        }
+
     }
 
     function copyId() { 
