@@ -320,6 +320,7 @@
                 else if (data.action === 'insert') addSong(data.song, true);
                 else if (data.action === 'skip') skipSong();
                 else if (data.action === 'remove') removeSong(data.index);
+                else if (data.action === 'move') moveSong(data.from, data.toOffset);
             } else if (data.type === 'sync') {
                 songList = data.list;
                 updateUI();
@@ -607,7 +608,33 @@
             initSortable();
 
             if (songList.length === 0) box.innerHTML = '<div style="color:#444; text-align:center; padding:20px;">清單空空的...</div>';
-        } else {
+        } 
+        else if (currentMode === 'history') {
+            // 房主讀取 local，客戶端讀取廣播來的資料
+            const displayList = isHost ? 
+                (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
+                (window.remoteHistory || []);
+
+            if (displayList.length === 0) {
+                box.innerHTML = '<div style="color:#666; text-align:center; padding:20px;">尚無點播紀錄 (等待房主同步...)</div>';
+                return;
+            }
+
+            box.innerHTML = displayList.map((s, i) => `
+                <div class="song-item no-drag">
+                    <div class="song-title" style="cursor:pointer;" onclick="quickAddHistory('${s.title}')">
+                        🕒 ${s.title}
+                        <small style="display:inline; color:#888; margin-left:10px;">${s.time}</small>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="toggleFavFromHistory(${i})" style="background:none; border:none; cursor:pointer;">
+                            ${checkIsFav(s.title) ? '⭐' : '☆'}
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        else {
             // 最愛清單渲染邏輯 (維持原樣或同樣加入拖拽)
             // --- 渲染最愛清單 ---
             const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
@@ -633,14 +660,16 @@
         }
     }
     function moveSong(from, toOffset) {
-        if (!isHost) return; // 只有房主能決定最終順序
-        
-        const targetIndex = from + toOffset;
-        const item = songList.splice(from, 1)[0];
-        songList.splice(targetIndex, 0, item);
-        
-        updateUI();
-        broadcast(); // 同步給所有賓客
+        if (isHost) {
+            const targetIndex = from + toOffset;
+            const item = songList.splice(from, 1)[0];
+            songList.splice(targetIndex, 0, item);
+            
+            updateUI();
+            broadcast(); // 同步給所有賓客
+        } else if (connections[0]?.open) {
+            connections[0].send({ type: 'cmd', action: 'move', from: from, toOffset: toOffset });
+        }
     }
 
     function moveFavorite(from, to) {
@@ -657,7 +686,7 @@
         updateUI();
         showToast("📋 最愛順序已更新");
     }
-    
+
     function initSortable() {
         const el = document.getElementById('list-content');
         
@@ -684,6 +713,31 @@
                     moveFavorite(oldIndex, newIndex);
                 }
             },
+        });
+    }
+
+    function addToHistory(song) {
+        // 檢查是否為房主（假設你有 isHost 變數）
+        if (!isHost) return; 
+
+        let history = JSON.parse(localStorage.getItem('ktv_history')) || [];
+        
+        // 過濾重複並置頂最新歌曲
+        history = history.filter(s => s.title !== song.title);
+        history.unshift({
+            title: song.title,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+
+        if (history.length > 50) history = history.slice(0, 50);
+
+        // 1. 存入房主本地
+        localStorage.setItem('ktv_history', JSON.stringify(history));
+        
+        // 2. 廣播給所有客戶端
+        broadcast({
+            type: 'sync_history',
+            data: history
         });
     }
 
