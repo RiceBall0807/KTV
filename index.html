@@ -159,7 +159,7 @@
     <div class="side-area">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
             <h3 id="list-title" style="margin:0; color: var(--primary);">📜 待播清單</h3>
-            <button id="tab-switch-btn" onclick="toggleListMode()" style="background: #333; color: #ffcc00; border: 1px solid #444; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8em; font-weight: bold;">
+            <button id="tab-switch-btn" onclick="cycleListMode()" style="background: #333; color: #ffcc00; border: 1px solid #444; padding: 5px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8em; font-weight: bold;">
                 ⭐ 查看最愛
             </button>
         </div>
@@ -324,6 +324,14 @@
             } else if (data.type === 'sync') {
                 songList = data.list;
                 updateUI();
+            } else if (data.type === 'sync_history') {
+                window.remoteHistory = data.data;
+                if (currentMode === 'history') {
+                    updateUI();
+                }
+            } else if (data.type === 'req_history' && isHost) {
+                const history = JSON.parse(localStorage.getItem('ktv_history')) || [];
+                conn.send({ type: 'sync_history', data: history });
             }
         });
 
@@ -402,6 +410,8 @@
     function playCurrent() {
         if (songList.length === 0) return;
         const cur = songList[0];
+        
+        addToHistory(cur);
         stopAll();
 
         if (cur.type === 'youtube') {
@@ -542,6 +552,58 @@
         }
     }
 
+    function quickAddHistory(historyIndex) {
+        const displayList = isHost ? 
+            (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
+            (window.remoteHistory || []);
+        
+        const song = displayList[historyIndex];
+        if (!song) return;
+
+        if (isHost) {
+            addSong(song, false);
+            showToast("🚀 已從歷史紀錄點歌");
+        } else {
+            const activeConn = connections.find(c => c.open);
+            if (activeConn) {
+                activeConn.send({ type: 'cmd', action: 'add', song: song });
+                showToast("🚀 已從歷史紀錄點歌");
+            } else {
+                alert("與電視連線中斷");
+            }
+        }
+    }
+
+    function checkIsFav(id) {
+        const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        return favs.some(f => f.id === id);
+    }
+
+    function toggleFavFromHistory(historyIndex) {
+        const displayList = isHost ? 
+            (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
+            (window.remoteHistory || []);
+        const song = displayList[historyIndex];
+        if (!song) return;
+
+        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        const favIndex = favs.findIndex(f => f.id === song.id);
+
+        if (favIndex >= 0) {
+            favs.splice(favIndex, 1);
+            showToast("💔 已移除最愛");
+        } else {
+            favs.push({
+                id: song.id,
+                type: song.type,
+                title: song.title
+            });
+            showToast("❤️ 已加入最愛");
+        }
+        localStorage.setItem('ktv_favs', JSON.stringify(favs));
+        updateUI();
+    }
+
     // 移除最愛
     function removeFav(index) {
         let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
@@ -551,31 +613,52 @@
         updateUI();
     }
 
-    function toggleListMode() {
+    function cycleListMode() {
         const btn = document.getElementById('tab-switch-btn');
         const title = document.getElementById('list-title');
-        
+
         if (currentMode === 'queue') {
+            // 切換到「最愛」
             currentMode = 'fav';
-            btn.innerText = "📜 返回待播";
+            btn.innerText = "🕒 查看歷史";
+            btn.style.color = "#00ccff";
             title.innerText = "⭐ 我的最愛";
             title.style.color = "#ffcc00";
+        } else if (currentMode === 'fav') {
+            // 切換到「歷史」
+            currentMode = 'history';
+            btn.innerText = "📜 返回待播";
+            btn.style.color = "var(--primary)";
+            title.innerText = "🕒 歷史紀錄";
+            title.style.color = "#00ccff";
+
+            if (!isHost) {
+                // 如果是賓客，跟房主請求歷史紀錄
+                const activeConn = connections.find(c => c.open);
+                if (activeConn) activeConn.send({ type: 'req_history' });
+            }
         } else {
+            // 從「歷史」切換回「待播」
             currentMode = 'queue';
             btn.innerText = "⭐ 查看最愛";
+            btn.style.color = "#ffcc00";
             title.innerText = "📜 待播清單";
             title.style.color = "var(--primary)";
         }
-        updateUI(); // 統一由 updateUI 負責渲染內容
+        updateUI();
     }
 
     // 在網頁開啟時自動載入
     window.addEventListener('load', updateFavUI);
 
-    function broadcast() {
+    function broadcast(customData) {
         if (isHost) {
-            localStorage.setItem('ktv_queue_backup', JSON.stringify(songList));
-            connections.forEach(c => { if (c.open) c.send({ type: 'sync', list: songList }); });
+            if (customData) {
+                connections.forEach(c => { if (c.open) c.send(customData); });
+            } else {
+                localStorage.setItem('ktv_queue_backup', JSON.stringify(songList));
+                connections.forEach(c => { if (c.open) c.send({ type: 'sync', list: songList }); });
+            }
         }
     }
 
@@ -622,13 +705,13 @@
 
             box.innerHTML = displayList.map((s, i) => `
                 <div class="song-item no-drag">
-                    <div class="song-title" style="cursor:pointer;" onclick="quickAddHistory('${s.title}')">
+                    <div class="song-title" style="cursor:pointer;" onclick="quickAddHistory(${i})">
                         🕒 ${s.title}
                         <small style="display:inline; color:#888; margin-left:10px;">${s.time}</small>
                     </div>
                     <div style="display:flex; gap:10px;">
                         <button onclick="toggleFavFromHistory(${i})" style="background:none; border:none; cursor:pointer;">
-                            ${checkIsFav(s.title) ? '⭐' : '☆'}
+                            ${checkIsFav(s.id) ? '⭐' : '☆'}
                         </button>
                     </div>
                 </div>
@@ -725,6 +808,8 @@
         // 過濾重複並置頂最新歌曲
         history = history.filter(s => s.title !== song.title);
         history.unshift({
+            id: song.id,
+            type: song.type,
             title: song.title,
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         });
