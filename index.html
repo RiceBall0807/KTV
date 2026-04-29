@@ -75,9 +75,26 @@
             display: none !important;
         }
 
-        #list-content { flex-grow: 1; overflow-y: auto; margin-top: 10px; }
-        .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
-        .song-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; font-size: 0.95em; }
+        #list-content { flex-grow: 1; overflow-y: auto; margin-top: 10px; overflow-x: hidden; }
+        .song-item { padding: 12px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; overflow: hidden; }
+        
+        .song-title { flex: 1; overflow: hidden; white-space: nowrap; margin-right: 10px; font-size: 0.95em; outline: none; position: relative; }
+        /* 增加一個虛擬遮罩，確保跑馬燈超出邊界時會被隱藏而且左右預留漸層陰影（選擇性，這裡讓它直接裁切） */
+        .song-title-text { 
+            display: inline-block; 
+            white-space: pre; 
+            transition: transform 0.3s ease; /* 移開滑鼠時平滑回到原位 */
+        }
+        
+        /* 當滑鼠移上去時才套用跑馬燈動畫 */
+        .song-title:hover .song-title-text {
+            animation: var(--scroll-anim, none);
+        }
+
+        @keyframes scroll-marquee {
+            0%, 10% { transform: translateX(0); }
+            90%, 100% { transform: translateX(var(--scroll-dist)); }
+        }
 
         #toast { position: fixed; top: 20px; right: 20px; background: var(--info); color: #000; padding: 12px 24px; border-radius: 8px; display: none; z-index: 10000; }
         
@@ -677,7 +694,7 @@
             box.innerHTML = songList.map((s, i) => `
                 <div class="song-item ${i === 0 ? 'no-drag' : 'draggable'}" data-index="${i}">
                     <div class="song-title" style="color:${i === 0 ? 'var(--primary)' : '#fff'}">
-                        ${i === 0 ? '▶️' : i + 1 + '.'} ${s.title}
+                        <span class="song-title-text">${i === 0 ? '▶️' : i + 1 + '.'} ${s.title}</span>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
                         ${i !== 0 ? '<span class="drag-handle" style="cursor:grab; color:#666;">☰</span>' : ''}
@@ -706,10 +723,9 @@
             box.innerHTML = displayList.map((s, i) => `
                 <div class="song-item no-drag">
                     <div class="song-title" style="cursor:pointer;" onclick="quickAddHistory(${i})">
-                        🕒 ${s.title}
-                        <small style="display:inline; color:#888; margin-left:10px;">${s.time}</small>
+                        <span class="song-title-text">🕒 ${s.title} <small style="display:inline; color:#888; margin-left:10px;">${s.time}</small></span>
                     </div>
-                    <div style="display:flex; gap:10px;">
+                    <div style="display:flex; gap:10px; align-items:center;">
                         <button onclick="toggleFavFromHistory(${i})" style="background:none; border:none; cursor:pointer;">
                             ${checkIsFav(s.id) ? '⭐' : '☆'}
                         </button>
@@ -729,7 +745,7 @@
             box.innerHTML = favs.map((s, i) => `
                 <div class="song-item draggable" data-index="${i}">
                     <div class="song-title" style="cursor:pointer;" onclick="quickAddFav(${i})">
-                        ⭐ ${s.title}
+                        <span class="song-title-text">⭐ ${s.title}</span>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <span class="drag-handle" style="cursor:grab; color:#666;">☰</span>
@@ -741,6 +757,21 @@
             // 重要：渲染完 HTML 後，也要針對最愛清單初始化 Sortable
             initSortable();
         }
+
+        // 動態計算跑馬燈
+        setTimeout(() => {
+            document.querySelectorAll('.song-title').forEach(el => {
+                const textEl = el.querySelector('.song-title-text');
+                if (!textEl) return;
+                const dist = textEl.scrollWidth - el.clientWidth;
+                if (dist > 0) {
+                    textEl.style.setProperty('--scroll-dist', `-${dist + 10}px`); // 稍微多退一點
+                    textEl.style.setProperty('--scroll-anim', `scroll-marquee ${Math.max(3, dist / 30)}s linear infinite alternate`);
+                } else {
+                    textEl.style.setProperty('--scroll-anim', 'none');
+                }
+            });
+        }, 50);
     }
     function moveSong(from, toOffset) {
         if (isHost) {
