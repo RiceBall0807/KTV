@@ -20,6 +20,7 @@
         #player-container { width: 100%; aspect-ratio: 16/9; background: #000;background-image: url('wait.png');background-size: cover;background-position: center;background-repeat: no-repeat; border: 2px solid var(--primary); border-radius: 10px; overflow: hidden; position: relative; }
         #player-container > * { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
         .active-player { display: block !important; }
+        .hide-player-ui .active-player { pointer-events: none; } /* 阻擋滑鼠事件以隱藏自帶UI */
         iframe, #yt-instance { display: none; }
 
         .side-area { flex: 0.8; background: #111; padding: 20px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; min-width: 300px; max-width: 380px; }
@@ -165,7 +166,8 @@
                 <span style="color:#888; font-size: 0.8em; font-weight: bold;">ROOM CODE:</span> 
                 <span id="my-id" onclick="copyId()" title="點擊複製房號">...</span>
             </div>
-            <div class="header-right">
+            <div class="header-right" style="display:flex; align-items:center; gap:10px;">
+                <button id="toggle-ui-btn" onclick="togglePlayerUI()" style="background:none; border:1px solid #444; color:#fff; border-radius:5px; padding:3px 8px; cursor:pointer; font-size:0.8em; display:none;">👁️ 隱藏介面</button>
                 <span id="role-tag" style="color: #666; font-size: 0.8em;">(電視房主)</span>
             </div>
         </div>
@@ -188,6 +190,11 @@
                 <button style="background:#ffcc00; color:#000;" onclick="handleAction('insert')">插播</button>
                 <button style="background:var(--danger); color:#fff;" onclick="skipSong()">切歌</button>
             </div>
+            <div id="sort-controls" style="display: none; text-align: right; margin-top: 10px;">
+                <button id="sort-history-btn" onclick="toggleHistorySort()" style="background: transparent; color: #ccc; border: 1px solid rgba(255,255,255,0.4); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 0.85em; transition: 0.2s;">
+                    🔄 依熱門排序
+                </button>
+            </div>
         </div>
 
         <div id="list-content"></div>
@@ -205,6 +212,7 @@
     let connections = [];
     let peer = null;
     let currentMode = 'queue'; // 'queue' 或 'fav'
+    let historySortMode = 'popular'; // 'popular' 或 'recent'
 
     // YouTube API 加載監聽
     function onYouTubeIframeAPIReady() {
@@ -224,6 +232,7 @@
             isHost = true;
             initPeer(shortId);
             document.getElementById('role-tag').innerText = "(房主模式)";
+            document.getElementById('toggle-ui-btn').style.display = 'block'; // 房主顯示UI隱藏按鈕
         } else {
             isHost = false;
             const targetId = document.getElementById('join-id').value.trim().toUpperCase();
@@ -499,6 +508,17 @@
         }
     }
 
+    let isPlayerUIHidden = false;
+    function togglePlayerUI() {
+        const container = document.getElementById('player-container');
+        const btn = document.getElementById('toggle-ui-btn');
+        isPlayerUIHidden = !isPlayerUIHidden;
+        container.classList.toggle('hide-player-ui', isPlayerUIHidden);
+        btn.innerText = isPlayerUIHidden ? '👁️ 顯示介面' : '👁️ 隱藏介面';
+        btn.style.color = isPlayerUIHidden ? '#ffcc00' : '#fff';
+        showToast(isPlayerUIHidden ? "已觸發隱藏 (滑鼠不會喚醒撥放列)" : "已還原原始影片介面");
+    }
+
     function removeSong(i) {
         if (isHost) {
             if (i === 0) skipSong();
@@ -508,26 +528,37 @@
         }
     }
 
-    function saveFavoriteFromList(index) {
-        saveFavorite(songList[index]);
+    // 共用 toggle 最愛副程式
+    function toggleFavoriteSong(song) {
+        if (!song) return;
+
+        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
+        const favIndex = favs.findIndex(f => f.id === song.id);
+
+        if (favIndex >= 0) {
+            favs.splice(favIndex, 1);
+            showToast("💔 已移除最愛");
+        } else {
+            favs.push({
+                id: song.id,
+                type: song.type,
+                title: song.title
+            });
+            showToast("❤️ 已加入最愛");
+        }
+        localStorage.setItem('ktv_favs', JSON.stringify(favs));
+        updateUI();
     }
 
-    // 儲存最愛清單到 localStorage
-    function saveFavorite(songData) {
-        // 1. 先從本地取出舊的最愛 (如果沒有就設為空陣列)
-        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
-        
-        // 2. 檢查是否已經重複
-        if (favs.some(f => f.id === songData.id)) {
-            showToast("✨ 已經在最愛清單中囉！");
-            return;
-        }
-        
-        // 3. 加入新歌並存回
-        favs.push(songData);
-        localStorage.setItem('ktv_favs', JSON.stringify(favs));
-        showToast("❤️ 已加入最愛");
-        updateFavUI();
+    function toggleFavFromQueue(index) {
+        toggleFavoriteSong(songList[index]);
+    }
+
+    function toggleFavFromHistory(historyIndex) {
+        const displayList = isHost ? 
+            (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
+            (window.remoteHistory || []);
+        toggleFavoriteSong(displayList[historyIndex]);
     }
 
     // 更新最愛清單的 UI
@@ -596,31 +627,6 @@
         return favs.some(f => f.id === id);
     }
 
-    function toggleFavFromHistory(historyIndex) {
-        const displayList = isHost ? 
-            (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
-            (window.remoteHistory || []);
-        const song = displayList[historyIndex];
-        if (!song) return;
-
-        let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
-        const favIndex = favs.findIndex(f => f.id === song.id);
-
-        if (favIndex >= 0) {
-            favs.splice(favIndex, 1);
-            showToast("💔 已移除最愛");
-        } else {
-            favs.push({
-                id: song.id,
-                type: song.type,
-                title: song.title
-            });
-            showToast("❤️ 已加入最愛");
-        }
-        localStorage.setItem('ktv_favs', JSON.stringify(favs));
-        updateUI();
-    }
-
     // 移除最愛
     function removeFav(index) {
         let favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
@@ -632,6 +638,7 @@
 
     function cycleListMode() {
         const btn = document.getElementById('tab-switch-btn');
+        const sortControls = document.getElementById('sort-controls');
         const title = document.getElementById('list-title');
 
         if (currentMode === 'queue') {
@@ -641,6 +648,7 @@
             btn.style.color = "#00ccff";
             title.innerText = "⭐ 我的最愛";
             title.style.color = "#ffcc00";
+            sortControls.style.display = 'none';
         } else if (currentMode === 'fav') {
             // 切換到「歷史」
             currentMode = 'history';
@@ -648,6 +656,7 @@
             btn.style.color = "var(--primary)";
             title.innerText = "🕒 歷史紀錄";
             title.style.color = "#00ccff";
+            sortControls.style.display = 'block';
 
             if (!isHost) {
                 // 如果是賓客，跟房主請求歷史紀錄
@@ -661,6 +670,19 @@
             btn.style.color = "#ffcc00";
             title.innerText = "📜 待播清單";
             title.style.color = "var(--primary)";
+            sortControls.style.display = 'none';
+        }
+        updateUI();
+    }
+
+    function toggleHistorySort() {
+        const btn = document.getElementById('sort-history-btn');
+        if (historySortMode === 'popular') {
+            historySortMode = 'recent';
+            btn.innerText = "🔄 依最新排序";
+        } else {
+            historySortMode = 'popular';
+            btn.innerText = "🔄 依熱門排序";
         }
         updateUI();
     }
@@ -693,13 +715,15 @@
         if (currentMode === 'queue') {
             box.innerHTML = songList.map((s, i) => `
                 <div class="song-item ${i === 0 ? 'no-drag' : 'draggable'}" data-index="${i}">
+                    ${i !== 0 ? '<span class="drag-handle" style="cursor:grab; color:#666; margin-right:10px; font-size:1.2em;">☰</span>' : '<span style="margin-right:10px; font-size:1.2em; visibility:hidden; width:1.2em;">☰</span>'}
                     <div class="song-title" style="color:${i === 0 ? 'var(--primary)' : '#fff'}">
                         <span class="song-title-text">${i === 0 ? '▶️' : i + 1 + '.'} ${s.title}</span>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        ${i !== 0 ? '<span class="drag-handle" style="cursor:grab; color:#666;">☰</span>' : ''}
-                        <button onclick="saveFavoriteFromList(${i})" style="background:none; border:none; cursor:pointer;">❤️</button>
-                        <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer;">×</button>
+                        <button onclick="toggleFavFromQueue(${i})" style="background:none; border:none; cursor:pointer;" title="加入/移除最愛">
+                            ${checkIsFav(s.id) ? '<span style="font-size:1.2em;">⭐</span>' : '<span style="font-size:1.4em; color:#ddd; font-weight:bold;">☆</span>'}
+                        </button>
+                        <button onclick="removeSong(${i})" style="background:none; border:none; color:#666; cursor:pointer; font-size:1.2em;">×</button>
                     </div>
                 </div>
             `).join('');
@@ -711,9 +735,21 @@
         } 
         else if (currentMode === 'history') {
             // 房主讀取 local，客戶端讀取廣播來的資料
-            const displayList = isHost ? 
+            let displayList = isHost ? 
                 (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
                 (window.remoteHistory || []);
+
+            // 根據選擇的模式即時排序
+            displayList = [...displayList].sort((a, b) => {
+                if (historySortMode === 'popular') {
+                    let countA = a.count || 1;
+                    let countB = b.count || 1;
+                    if (countB !== countA) return countB - countA;
+                    return (b.timestamp || 0) - (a.timestamp || 0);
+                } else {
+                    return (b.timestamp || 0) - (a.timestamp || 0);
+                }
+            });
 
             if (displayList.length === 0) {
                 box.innerHTML = '<div style="color:#666; text-align:center; padding:20px;">尚無點播紀錄 (等待房主同步...)</div>';
@@ -722,12 +758,13 @@
 
             box.innerHTML = displayList.map((s, i) => `
                 <div class="song-item no-drag">
-                    <div class="song-title" style="cursor:pointer;" onclick="quickAddHistory(${i})">
-                        <span class="song-title-text">🕒 ${s.title} <small style="display:inline; color:#888; margin-left:10px;">${s.time}</small></span>
+                    <button onclick="quickAddHistory(${i})" title="新增至待播歌曲" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:1.5em; margin-right:10px; padding:0; line-height:1;">+</button>
+                    <div class="song-title">
+                        <span class="song-title-text">${s.title} <small style="display:inline; color:var(--primary); margin-left:10px;">🔥 ${s.count || 1} 次</small> <small style="display:inline; color:#888; margin-left:10px;">${s.time}</small></span>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <button onclick="toggleFavFromHistory(${i})" style="background:none; border:none; cursor:pointer;">
-                            ${checkIsFav(s.id) ? '⭐' : '☆'}
+                        <button onclick="toggleFavFromHistory(${i})" style="background:none; border:none; cursor:pointer;" title="加入/移除最愛">
+                            ${checkIsFav(s.id) ? '<span style="font-size:1.2em;">⭐</span>' : '<span style="font-size:1.4em; color:#ddd; font-weight:bold;">☆</span>'}
                         </button>
                     </div>
                 </div>
@@ -744,11 +781,12 @@
             
             box.innerHTML = favs.map((s, i) => `
                 <div class="song-item draggable" data-index="${i}">
-                    <div class="song-title" style="cursor:pointer;" onclick="quickAddFav(${i})">
-                        <span class="song-title-text">⭐ ${s.title}</span>
+                    <span class="drag-handle" style="cursor:grab; color:#666; margin-right:10px; font-size:1.2em;">☰</span>
+                    <button onclick="quickAddFav(${i})" title="新增至待播歌曲" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:1.5em; margin-right:10px; padding:0; line-height:1;">+</button>
+                    <div class="song-title">
+                        <span class="song-title-text">${s.title}</span>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <span class="drag-handle" style="cursor:grab; color:#666;">☰</span>
                         <button onclick="removeFav(${i})" title="刪除最愛" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:18px;">🗑️</button>
                     </div>
                 </div>
@@ -831,21 +869,42 @@
     }
 
     function addToHistory(song) {
-        // 檢查是否為房主（假設你有 isHost 變數）
+        // 檢查是否為房主
         if (!isHost) return; 
 
         let history = JSON.parse(localStorage.getItem('ktv_history')) || [];
         
-        // 過濾重複並置頂最新歌曲
-        history = history.filter(s => s.title !== song.title);
-        history.unshift({
-            id: song.id,
-            type: song.type,
-            title: song.title,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        let existingIndex = history.findIndex(s => s.id === song.id || s.title === song.title);
+        
+        // 紀錄或更新歌曲
+        if (existingIndex !== -1) {
+            let targetSong = history[existingIndex];
+            targetSong.count = (targetSong.count || 1) + 1;
+            targetSong.time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            targetSong.timestamp = Date.now();
+        } else {
+            history.push({
+                id: song.id,
+                type: song.type,
+                title: song.title,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                timestamp: Date.now(),
+                count: 1
+            });
+        }
+
+        // 以點播次數排序 (多 -> 少)，次數相同則以最新時間排序 (新 -> 舊)
+        history.sort((a, b) => {
+            let countA = a.count || 1;
+            let countB = b.count || 1;
+            if (countB !== countA) {
+                return countB - countA;
+            }
+            return (b.timestamp || 0) - (a.timestamp || 0);
         });
 
-        if (history.length > 50) history = history.slice(0, 50);
+        // 最多保留 200 首
+        if (history.length > 200) history = history.slice(0, 200);
 
         // 1. 存入房主本地
         localStorage.setItem('ktv_history', JSON.stringify(history));
