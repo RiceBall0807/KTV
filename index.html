@@ -167,7 +167,7 @@
                 <span id="my-id" onclick="copyId()" title="點擊複製房號">...</span>
             </div>
             <div class="header-right" style="display:flex; align-items:center; gap:10px;">
-                <button id="toggle-ui-btn" onclick="togglePlayerUI()" style="background:none; border:1px solid #444; color:#fff; border-radius:5px; padding:3px 8px; cursor:pointer; font-size:0.8em; display:none;">👁️ 隱藏介面</button>
+                <button id="toggle-ui-btn" onclick="forceHideUI()" style="background:none; border:1px solid #444; color:#fff; border-radius:5px; padding:3px 8px; cursor:pointer; font-size:0.8em; display:none;">👁️ 隱藏介面</button>
                 <span id="role-tag" style="color: #666; font-size: 0.8em;">(電視房主)</span>
             </div>
         </div>
@@ -508,15 +508,25 @@
         }
     }
 
-    let isPlayerUIHidden = false;
-    function togglePlayerUI() {
+    function forceHideUI() {
+        // 模糊焦點以防留在 iframe 內
+        if (document.activeElement) document.activeElement.blur();
+        window.focus();
+
         const container = document.getElementById('player-container');
-        const btn = document.getElementById('toggle-ui-btn');
-        isPlayerUIHidden = !isPlayerUIHidden;
-        container.classList.toggle('hide-player-ui', isPlayerUIHidden);
-        btn.innerText = isPlayerUIHidden ? '👁️ 顯示介面' : '👁️ 隱藏介面';
-        btn.style.color = isPlayerUIHidden ? '#ffcc00' : '#fff';
-        showToast(isPlayerUIHidden ? "已觸發隱藏 (滑鼠不會喚醒撥放列)" : "已還原原始影片介面");
+        
+        // 加入阻隔滑鼠事件的 Class，讓 YouTube/Bili 認為滑鼠已移開，開始自動收起介面
+        container.classList.add('hide-player-ui');
+        showToast("已暫時隱藏介面 (滑鼠移入影片即可喚醒)");
+
+        // 綁定單次事件：當滑鼠真正在影片上方移動時，解除阻隔並喚醒
+        setTimeout(() => {
+            const wakeUp = () => {
+                container.classList.remove('hide-player-ui');
+                container.removeEventListener('mousemove', wakeUp);
+            };
+            container.addEventListener('mousemove', wakeUp);
+        }, 300); // 防抖，避免一按下按鈕的輕微位移馬上喚醒
     }
 
     function removeSong(i) {
