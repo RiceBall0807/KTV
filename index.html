@@ -155,7 +155,13 @@
         <div style="margin: 20px 0; color: #555;">─── 或者 ───</div>
         <input type="text" id="join-id" placeholder="輸入 6 位數房號">
         <button class="start-btn join-btn" onclick="startSession('join')">🎧 加入包廂 (賓客)</button>
+        <div style="margin-top: 20px; border-top: 1px solid #333; padding-top: 10px;">
+            <button onclick="openGuide()" style="width: 100%; padding: 10px; background: transparent; border: 1px solid #555; color: #ccc; border-radius: 8px; cursor: pointer; font-size: 0.9em; transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary)'; this.style.color='#fff';" onmouseout="this.style.borderColor='#555'; this.style.color='#ccc';">
+                📖 查看使用說明書
+            </button>
+        </div>
     </div>
+    
 </div>
 
 <div id="toast"></div>
@@ -566,6 +572,11 @@
         } else if (connections[0]?.open) {
             connections[0].send({ type: 'cmd', action: 'remove', index: i });
         }
+    }
+
+    function openGuide() {
+        const guideUrl = "https://scribehow.com/embed-preview/Gemini_KTV___3v4sCbH2SvW0_vy2cHTkEQ?as=slides&size=flexible";
+        window.open(guideUrl, '_blank');
     }
 
     // 共用 toggle 最愛副程式
