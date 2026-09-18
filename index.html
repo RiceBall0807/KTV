@@ -565,13 +565,29 @@
         toggleFavoriteSong(songList[index]);
     }
 
-    function toggleFavFromHistory(historyIndex) {
-        const displayList = isHost ? 
+    // 輔助函式：取得當前 UI 排序後的歷史紀錄陣列
+    function getSortedHistoryList() {
+        let rawList = isHost ? 
             (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
             (window.remoteHistory || []);
-        toggleFavoriteSong(displayList[historyIndex]);
+
+        return [...rawList].sort((a, b) => {
+            if (historySortMode === 'popular') {
+                let countA = a.count || 1;
+                let countB = b.count || 1;
+                if (countB !== countA) return countB - countA;
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            } else {
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            }
+        });
     }
 
+    function toggleFavFromHistory(historyIndex) {
+        // 改為讀取經過當前模式排序後的陣列
+        const displayList = getSortedHistoryList();
+        toggleFavoriteSong(displayList[historyIndex]);
+    }
     // 更新最愛清單的 UI
     function updateFavUI() {
         const favBox = document.getElementById('favorite-content');
@@ -612,26 +628,25 @@
     }
 
     function quickAddHistory(historyIndex) {
-        const displayList = isHost ? 
-            (JSON.parse(localStorage.getItem('ktv_history')) || []) : 
-            (window.remoteHistory || []);
-        
-        const song = displayList[historyIndex];
-        if (!song) return;
+    // 同樣改為讀取經過當前模式排序後的陣列
+    const displayList = getSortedHistoryList();
+    
+    const song = displayList[historyIndex];
+    if (!song) return;
 
-        if (isHost) {
-            addSong(song, false);
+    if (isHost) {
+        addSong(song, false);
+        showToast("🚀 已從歷史紀錄點歌");
+    } else {
+        const activeConn = connections.find(c => c.open);
+        if (activeConn) {
+            activeConn.send({ type: 'cmd', action: 'add', song: song });
             showToast("🚀 已從歷史紀錄點歌");
         } else {
-            const activeConn = connections.find(c => c.open);
-            if (activeConn) {
-                activeConn.send({ type: 'cmd', action: 'add', song: song });
-                showToast("🚀 已從歷史紀錄點歌");
-            } else {
-                alert("與電視連線中斷");
-            }
+            alert("與電視連線中斷");
         }
     }
+}
 
     function checkIsFav(id) {
         const favs = JSON.parse(localStorage.getItem('ktv_favs')) || [];
