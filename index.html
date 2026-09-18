@@ -256,6 +256,9 @@
     }
     
     function initPeer(id) {
+        if (peer) {
+            try { peer.destroy(); } catch(e){}
+        }
         // 這裡進行賦值，因為上面宣告是 let，所以不會報錯
         peer = new Peer(id, {
             config: {
@@ -274,9 +277,16 @@
             // 1. 只有房主才在畫面上顯示「自己的 ID」
             if (isHost) {
                 document.getElementById('my-id').innerText = myId;
-                loadSavedQueue();
-                updateUI();
-                playCurrent();
+            
+                // 🌟 關鍵修復：只有在「第一次開包廂 (非刷新)」時才載入備份與開始播放
+                if (!isRefresh) {
+                    loadSavedQueue();
+                    updateUI();
+                    playCurrent();
+                } else {
+                    // 如果是刷新房號，只更新 UI，不重新播放播放器
+                    updateUI();
+                }
                 
                 // 房主才產生 QR Code
                 const qrBox = document.getElementById('qrcode-container');
@@ -387,7 +397,7 @@
     const newShortId = Math.random().toString(36).substring(2, 8).toUpperCase();
         
     // 3. 重新初始化 Peer (發送新房號並更新 QR Code)
-    initPeer(newShortId);
+    initPeer(newShortId, true);
     showToast("🔄 已重新建立包廂，新房號已更新！");
     
 }
