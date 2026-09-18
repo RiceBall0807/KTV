@@ -168,6 +168,7 @@
                 <span id="my-id" onclick="copyId()" title="點擊複製房號">...</span>
             </div>
             <div class="header-right" style="display:flex; align-items:center; gap:10px;">
+            <button id="refresh-room-btn" onclick="refreshRoomCode()" style="background: none; border: 1px solid #555; color: #aaa; border-radius: 5px; padding: 2px 8px; cursor: pointer; font-size: 0.8em; display: none;" title="網路不穩時，點此重新建立包廂房號">🔄刷新房號</button>
                 <button id="toggle-ui-btn" onclick="forceHideUI()" style="background:none; border:1px solid #444; color:#fff; border-radius:5px; padding:3px 8px; cursor:pointer; font-size:0.8em; display:none;">👁️ 隱藏介面</button>
                 <span id="role-tag" style="color: #666; font-size: 0.8em;">(電視房主)</span>
             </div>
@@ -233,7 +234,8 @@
             isHost = true;
             initPeer(shortId);
             document.getElementById('role-tag').innerText = "(房主模式)";
-            document.getElementById('toggle-ui-btn').style.display = 'block'; // 房主顯示UI隱藏按鈕
+            //document.getElementById('toggle-ui-btn').style.display = 'block'; // 房主顯示UI隱藏按鈕20260918關閉此功能
+            document.getElementById('refresh-room-btn').style.display = 'inline-block'; // 🌟 房主顯示刷新房號按鈕
         } else {
             isHost = false;
             const targetId = document.getElementById('join-id').value.trim().toUpperCase();
@@ -372,6 +374,23 @@
             console.error("連線錯誤:", err);
         });
     }
+
+    function refreshRoomCode() {
+    if (!isHost) return;
+
+    // 1. 如果有舊的 peer，先關閉/銷毀
+    if (peer) {
+        try { peer.destroy(); } catch(e) {}
+    }
+        
+    // 2. 生成全新 6 位數房號
+    const newShortId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        
+    // 3. 重新初始化 Peer (發送新房號並更新 QR Code)
+    initPeer(newShortId);
+    showToast("🔄 已重新建立包廂，新房號已更新！");
+    
+}
 
     function handleAction(action) {
         const url = document.getElementById('videoUrl').value.trim();
