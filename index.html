@@ -255,7 +255,7 @@
         }
     }
     
-    function initPeer(id) {
+    function initPeer(id, isRefresh = false) {
         if (peer) {
             try { peer.destroy(); } catch(e){}
         }
